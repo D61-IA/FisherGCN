@@ -1,0 +1,239 @@
+#!/usr/bin/env python
+
+from __future__ import division, absolute_import, print_function
+
+import os, time, shutil
+import tensorflow as tf
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+import scipy.sparse as sp
+from utils import *
+from models import GCN, MLP
+from block_krylov import block_krylov
+
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+flags.DEFINE_string(  'dataset', 'cora', 'Dataset string.' )          # 'cora', 'citeseer', 'pubmed', 'karate' 'all'
+flags.DEFINE_boolean( 'randomsplit', False, 'random split of train:valid:test' ) # random split is recommended for a more complete comparison
+
+flags.DEFINE_string(  'model',   'fishergcn',    'Model string.' )    # 'gcn', 'gcnT', 'fishergcn', 'fishergcnT', 'gcn_cheby', 'dense'
+flags.DEFINE_float(   'learning_rate', 0.01, 'Initial learning rate.' )
+flags.DEFINE_float(   'dropout', 0.5, 'Dropout rate (1 - keep probability).' )
+flags.DEFINE_integer( 'epochs', 500, 'Number of epochs to train.' )
+flags.DEFINE_integer( 'hidden1', 64, 'Number of units in hidden layer 1.' )
+flags.DEFINE_float(   'weight_decay', 5e-4, 'Weight for L2 loss on embedding matrix.' )
+flags.DEFINE_integer( 'early_stop', 1, 'early_stop strategy' )        # 0: no stop 1: simple early stop 2: more strict conditions
+flags.DEFINE_boolean( 'retrace', False, 'recover the model with the minimum validation loss' )
+flags.DEFINE_integer( 'max_degree', 3, 'Maximum Chebyshev polynomial degree.' )
+flags.DEFINE_integer( 'seed',   2019, 'random seed' )
+flags.DEFINE_integer( 'repeat', 20, 'number of repeats' )
+
+# for high-order GCN
+flags.DEFINE_integer( 'order', 5, 'order of high-order GCN' )
+flags.DEFINE_float(   'threshold', 1e-4, 'A threshold to apply nodes filtering on random walk matrix.' )
+
+# Fisher-GCN corresponds to fisher_freq=1 & fisher_adversary=1; other setting of these two parameters are varations 
+# in practice, one only needs to tune the fisher_noise parameter
+flags.DEFINE_integer( 'fisher_rank', 10, 'dimension of the noise' )
+flags.DEFINE_integer( 'fisher_perturbation',  5, 'number of pertubations' ) # the smaller the quicker but worse 
+flags.DEFINE_float(   'fisher_noise', 0.01, 'noise level' )
+flags.DEFINE_integer( 'fisher_freq', 1, 'high frequency noise' ) # 0/1/2 for low/high/random frenquency
+flags.DEFINE_integer( 'fisher_adversary', 1, 'adversary noise' ) # 0: plain noise; 1: adversary noise
+
+def exp( run, dataset, diag_tensor=False, data_seed=None ):
+    tf.reset_default_graph()
+    np.random.seed( FLAGS.seed + run )
+    tf.set_random_seed( FLAGS.seed + run )
+
+    adj, subgraphs, features, y_train, y_val, y_test, train_mask, val_mask, test_mask = load_data( dataset, data_seed )
+    features = preprocess_features(features)
+    perturbation = None
+
+    placeholders = {
+        'features': tf.sparse_placeholder( tf.float32, shape=tf.constant(features[2],dtype=tf.int64) ),
+        'labels': tf.placeholder(tf.float32, shape=(None, y_train.shape[1])),
+        'labels_mask': tf.placeholder(tf.int32),
+        'dropout': tf.placeholder_with_default(0., shape=()),
+        'num_features_nonzero': tf.placeholder(tf.int32),  # helper variable for sparse dropout
+        'noise': tf.placeholder( tf.float32, shape=() ),
+    }
+
+    if FLAGS.model == 'gcn':
+        support = [ sparse_to_tuple( preprocess_adj(adj) ) ]
+        model_func = GCN
+
+    elif FLAGS.model == 'gcnT':
+        support = [ sparse_to_tuple( preprocess_high_order_adj( adj, FLAGS.order, FLAGS.threshold ) ) ]
+        model_func = GCN
+
+    elif FLAGS.model == 'fishergcn' or FLAGS.model == 'fishergcnT':
+
+        if FLAGS.model == 'fishergcn':
+            A = preprocess_adj( adj )
+        else:
+            A = preprocess_high_order_adj( adj, FLAGS.order, FLAGS.threshold )
+
+        N = adj.shape[0]
+        L = sp.eye( N ) - A
+
+        if FLAGS.fisher_freq == 0:
+            nsubgraphs = subgraphs.shape[1]
+            V = block_krylov( A, FLAGS.fisher_rank+nsubgraphs )
+            V = V[:,:FLAGS.fisher_rank]
+            w = ( sp.csr_matrix.dot( L, V ) * V ).sum(0)
+            #w, V = sp.linalg.eigsh( A, k=FLAGS.fisher_rank+nsubgraphs )
+            perturb = tf.random.uniform( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), dtype=tf.float32 )
+
+        elif FLAGS.fisher_freq == 1:
+            V = block_krylov( L, FLAGS.fisher_rank )
+            w = ( sp.csr_matrix.dot( L, V ) * V ).sum(0)
+            perturb = tf.random.uniform( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), minval=-.5, maxval=.5, dtype=tf.float32 )
+
+        elif FLAGS.fisher_freq == 2:
+            V, _ = np.linalg.qr( np.random.randn(N, FLAGS.fisher_rank) )
+            w = np.ones( FLAGS.fisher_rank )
+            perturb = tf.random.uniform( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), minval=-.5, maxval=.5, dtype=tf.float32 )
+
+        else:
+            print( 'unknown frequency:', FLAGS.fisher_freq )
+            sys.exit(0)
+
+        if FLAGS.fisher_adversary > 0:
+            # this is a different noise parametrization
+            #_dirs = tf.get_variable( 'perturbation', shape=(FLAGS.fisher_rank, FLAGS.fisher_rank), dtype=tf.float32 )
+            #_dirs = tf.matmul( _dirs, _dirs, transpose_b=True )
+            #pradius = tf.sigmoid( tf.get_variable( 'perturbation_radius', dtype=tf.float32, shape=() ) )
+            #_dirs =  pradius * _dirs / tf.trace( _dirs )
+            #perturb = tf.matmul( _dirs, tf.random.normal( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), dtype=tf.float32 ) )
+
+            _dirs = tf.sigmoid( tf.get_variable( 'perturbation', shape=(FLAGS.fisher_rank, 1), dtype=tf.float32 ) )
+            perturb = _dirs * perturb
+
+        metric_w = tf.constant( np.sqrt(w/w.mean()), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
+        inc_w = placeholders['noise'] * metric_w * perturb
+        perturbation = ( tf.constant( V, dtype=tf.float32, name='FisherV' ), inc_w )
+        support    = [ sparse_to_tuple( A ) ]
+        model_func = GCN
+
+    elif FLAGS.model == 'gcn_cheby':
+        support = chebyshev_polynomials(adj, FLAGS.max_degree)
+        num_supports = 1 + FLAGS.max_degree
+        model_func = GCN
+
+    elif FLAGS.model == 'dense':
+        support = [preprocess_adj(adj) + 1]  # Not used
+        model_func = MLP
+
+    else:
+        raise ValueError( 'Invalid argument for model: ' + str(FLAGS.model) )
+
+    _, _values, _shape = support[0]
+    print( 'running {} on {} (trial {})'.format( FLAGS.model, dataset, run+1 ) )
+    print( "sparsity: {0:.2f}%".format( 100*(_values>0).sum() / (_shape[0]*_shape[1]) ) )
+    placeholders['support'] = [ tf.sparse_placeholder(tf.float32) for _ in support ]
+    model = model_func( placeholders, input_dim=features[2][1], input_rows=features[2][0], diag_tensor=diag_tensor, perturbation=perturbation, logging=True, subgraphs=subgraphs )
+
+    if FLAGS.retrace:
+        saver = tf.train.Saver( max_to_keep=FLAGS.early_stop )
+        runid = '.{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(
+                  dataset, FLAGS.model, FLAGS.learning_rate,
+                  FLAGS.weight_decay, FLAGS.dropout, FLAGS.fisher_noise,
+                  time.time(), np.random.randint( 0, int(1e18) ), run )
+        os.mkdir( runid )
+
+    sess = tf.Session()
+    # Define model evaluation function
+    def evaluate( noise, features, support, labels, mask, placeholders ):
+        t_test = time.time()
+        feed_dict_val = construct_feed_dict( noise, features, support, labels, mask, placeholders )
+        outs_val = sess.run( [model.loss, model.accuracy, model.outputs], feed_dict=feed_dict_val )
+        return outs_val[0], outs_val[1], (time.time() - t_test)
+
+    sess.run( tf.global_variables_initializer() )
+
+    history = []
+    for epoch in range( FLAGS.epochs ):
+        t = time.time()
+
+        feed_dict = construct_feed_dict( FLAGS.fisher_noise, features, support, y_train, train_mask, placeholders )
+        feed_dict.update( {placeholders['dropout']: FLAGS.dropout} )
+
+        outs = sess.run( [model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict )
+
+        # Validation
+        if FLAGS.retrace:
+            _file = saver.save( sess, '{}/gcn'.format( runid ), global_step=epoch )
+        else:
+            _file = None
+        _cost, _acc, duration = evaluate( 0.0, features, support, y_val, val_mask, placeholders )
+        history.append( (_file, _cost, _acc) )
+
+        if ( epoch + 1 ) % 10 == 0:
+            print("Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.5f}".format(outs[-2]),
+                  "train_acc=", "{:.5f}".format(outs[-1]),
+                  "val_loss=", "{:.5f}".format(_cost),
+                  "val_acc=", "{:.5f}".format(_acc),
+                  "time=", "{:.5f}".format(time.time() - t))
+
+            #print( 'perterbation radius:', sess.run( pradius ) )
+
+        if FLAGS.early_stop == 0:
+            pass
+
+        elif FLAGS.early_stop == 1:    # simple early stopping
+            if epoch > 20 and history[-1][1] > np.mean( [r[1] for r in history[-11:-1]] ) \
+                          and history[-1][2] < np.mean( [r[2] for r in history[-11:-1]] ):
+                print( "Early stopping at epoch {}...".format( epoch ) )
+                break
+
+        elif FLAGS.early_stop == 2:    # more strict conditions
+            if epoch > 100 \
+                and np.mean( [r[1] for r in history[-10:]] ) > np.mean( [r[1] for r in history[-100:]] ):
+                    print( "Early stopping at epoch {}...".format( epoch ) )
+                    break
+        else:
+            print( 'unknown early stopping strategy:', FLAGS.early_stop )
+            sys.exit(0)
+
+
+    if FLAGS.retrace:
+        history = [ _r for _r in history if os.access( _r[0]+".meta", os.R_OK ) ]
+        history.sort( key=lambda r:r[1], reverse=True )
+        sess = tf.Session()
+        saver.restore( sess, history[-1][0] )
+        shutil.rmtree( runid )
+
+    test_cost, test_acc, test_duration = evaluate( 0.0, features, support, y_test, test_mask, placeholders )
+    print( "Test set results:", "cost=", "{:.5f}".format(test_cost),
+           "accuracy=", "{:.5f}".format(test_acc),
+           "time=", "{:.5f}".format(test_duration) )
+
+    return history[-1][1], history[-1][2], test_cost, test_acc
+
+def main():
+    if FLAGS.dataset == 'all':
+        datasets = [ 'cora', 'citeseer', 'pubmed' ]
+    else:
+        datasets = [ FLAGS.dataset ]
+
+    for _dataset in datasets:
+        start_t = time.time()
+        if FLAGS.randomsplit:
+            result = np.array( [ exp( i, _dataset, data_seed=data_seed )
+                                 for data_seed in range(10) 
+                                 for i in range(10) ] )
+        else:
+            result = np.array( [ exp(i, _dataset) for i in range( FLAGS.repeat ) ] )
+        result[:,1] *= 100
+        result[:,3] *= 100
+
+        _mean = result.mean(0)
+        _std  = result.std(0)
+
+        print( 'finished in {:.2f} hours'.format( (time.time()-start_t)/3600 ) )
+        print( '{} {} final_valid     {:.3f} {:.2f} {:.3f} {:.2f}'.format( FLAGS.model, _dataset, _mean[0], _std[0], _mean[1], _std[1] ) )
+        print( '{} {} final_test      {:.3f} {:.2f} {:.3f} {:.2f}'.format( FLAGS.model, _dataset, _mean[2], _std[2], _mean[3], _std[3] ) )
+
+if __name__ == '__main__':
+    main()
+

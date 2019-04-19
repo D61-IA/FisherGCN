@@ -1,0 +1,5 @@
+The following individuals take credits to the coding works:
+
+Thomas Kipf      (Original GCN)
+Zhen (Jeff) Wang (adapt GCN to random walk similarity; HPC scripts)
+Ke Sun           (FisherGCN)
