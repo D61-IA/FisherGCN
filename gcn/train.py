@@ -13,7 +13,7 @@ from block_krylov import block_krylov
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
-flags.DEFINE_string(  'dataset', 'cora', 'Dataset string.' )          # 'cora', 'citeseer', 'pubmed', 'karate' 'all'
+flags.DEFINE_string(  'dataset', 'cora', 'Dataset string.' )          # 'cora', 'citeseer', 'pubmed', 'amazon_electronics_computers', 'amazon_electronics_photo'
 flags.DEFINE_boolean( 'randomsplit', False, 'random split of train:valid:test' ) # random split is recommended for a more complete comparison
 
 flags.DEFINE_string(  'model',   'fishergcn',    'Model string.' )    # 'gcn', 'gcnT', 'fishergcn', 'fishergcnT', 'gcn_cheby', 'dense'
@@ -32,10 +32,10 @@ flags.DEFINE_integer( 'repeat', 20, 'number of repeats' )
 flags.DEFINE_integer( 'order', 5, 'order of high-order GCN' )
 flags.DEFINE_float(   'threshold', 1e-4, 'A threshold to apply nodes filtering on random walk matrix.' )
 
-# Fisher-GCN corresponds to fisher_freq=1 & fisher_adversary=1; other setting of these two parameters are varations 
+# Fisher-GCN corresponds to fisher_freq=1 & fisher_adversary=1; other setting of these two parameters are varations
 # in practice, one only needs to tune the fisher_noise parameter
 flags.DEFINE_integer( 'fisher_rank', 10, 'dimension of the noise' )
-flags.DEFINE_integer( 'fisher_perturbation',  5, 'number of pertubations' ) # the smaller the quicker but worse 
+flags.DEFINE_integer( 'fisher_perturbation',  5, 'number of pertubations' ) # the smaller the quicker but worse
 flags.DEFINE_float(   'fisher_noise', 0.01, 'noise level' )
 flags.DEFINE_integer( 'fisher_freq', 1, 'high frequency noise' ) # 0/1/2 for low/high/random frenquency
 flags.DEFINE_integer( 'fisher_adversary', 1, 'adversary noise' ) # 0: plain noise; 1: adversary noise
@@ -220,7 +220,7 @@ def main():
         start_t = time.time()
         if FLAGS.randomsplit:
             result = np.array( [ exp( i, _dataset, data_seed=data_seed )
-                                 for data_seed in range(10) 
+                                 for data_seed in range(10)
                                  for i in range(10) ] )
         else:
             result = np.array( [ exp(i, _dataset) for i in range( FLAGS.repeat ) ] )
@@ -236,4 +236,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

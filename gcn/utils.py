@@ -6,6 +6,9 @@ import scipy.sparse as sp
 from scipy.sparse.linalg.eigen.arpack import eigsh
 import sys
 from sklearn import model_selection
+from sklearn.preprocessing import MultiLabelBinarizer, LabelBinarizer, normalize
+
+from data_io import *
 
 def parse_index_file(filename):
     """Parse index file."""
@@ -22,124 +25,248 @@ def sample_mask( idx, l ):
     mask[idx] = 1
     return np.array(mask, dtype=np.bool)
 
+def eliminate_self_loops(A):
+    """Remove self-loops from the adjacency matrix."""
+    A = A.tolil()
+    A.setdiag(0)
+    A = A.tocsr()
+    A.eliminate_zeros()
+    return A
 
-def load_karate():
-    """Load karate club dataset"""
-    print('Loading karate club dataset...')
+def is_binary_bag_of_words(features):
+    features_coo = features.tocoo()
+    return all(single_entry == 1.0 for _, _, single_entry in zip(features_coo.row, features_coo.col, features_coo.data))
 
-    G = nx.karate_club_graph()
-    edges = np.array(G.edges())
-    nodes = list(G.nodes())
-    features = sp.eye(np.max(edges+1), dtype=np.float32).tolil()
+def to_binary_bag_of_words(features):
+    """Converts TF/IDF features to binary bag-of-words features."""
+    features_copy = features.tocsr()
+    features_copy.data[:] = 1.0
+    return features_copy
 
-    # True labels of the group each student (node) unded up in. Found via the original paper
-    labels = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+def binarize_labels(labels, sparse_output=False, return_classes=False):
+    """Convert labels vector to a binary label matrix.
 
-    adj = nx.adjacency_matrix(G)
+    In the default single-label case, labels look like
+    labels = [y1, y2, y3, ...].
+    Also supports the multi-label format.
+    In this case, labels should look something like
+    labels = [[y11, y12], [y21, y22, y23], [y31], ...].
 
-    # build symmetric adjacency matrix
-    adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+    Parameters
+    ----------
+    labels : array-like, shape [num_samples]
+        Array of node labels in categorical single- or multi-label format.
+    sparse_output : bool, default False
+        Whether return the label_matrix in CSR format.
+    return_classes : bool, default False
+        Whether return the classes corresponding to the columns of the label matrix.
 
-    print('Dataset has {} nodes, {} edges, {} features.'.format(adj.shape[0], edges.shape[0], features.shape[1]))
+    Returns
+    -------
+    label_matrix : np.ndarray or sp.csr_matrix, shape [num_samples, num_classes]
+        Binary matrix of class labels.
+        num_classes = number of unique values in "labels" array.
+        label_matrix[i, k] = 1 <=> node i belongs to class k.
+    classes : np.array, shape [num_classes], optional
+        Classes that correspond to each column of the label_matrix.
 
-    # Split nodes into train/test using stratification.
-    train_nodes, test_nodes, train_targets, test_targets = model_selection.train_test_split(
-        nodes, labels, train_size=int(len(nodes)/4), test_size=None, stratify=labels, random_state=55232
-    )
+    """
+    if hasattr(labels[0], '__iter__'):  # labels[0] is iterable <=> multilabel format
+        binarizer = MultiLabelBinarizer(sparse_output=sparse_output)
+    else:
+        binarizer = LabelBinarizer(sparse_output=sparse_output)
+    label_matrix = binarizer.fit_transform(labels).astype(np.float32)
+    return (label_matrix, binarizer.classes_) if return_classes else label_matrix
 
-    # Split test set into test and validation
-    val_nodes, test_nodes, val_targets, test_targets = model_selection.train_test_split(
-        test_nodes, test_targets, train_size=int(len(test_nodes)/2), test_size=None, random_state=523214
-    )
+def sample_per_class(random_state, labels, num_examples_per_class, forbidden_indices=None):
+    num_samples, num_classes = labels.shape
+    sample_indices_per_class = {index: [] for index in range(num_classes)}
 
-    train_mask = sample_mask(train_nodes, labels.shape[0])
-    val_mask = sample_mask(val_nodes, labels.shape[0])
-    test_mask = sample_mask(test_nodes, labels.shape[0])
+    # get indices sorted by class
+    for class_index in range(num_classes):
+        for sample_index in range(num_samples):
+            if labels[sample_index, class_index] > 0.0:
+                if forbidden_indices is None or sample_index not in forbidden_indices:
+                    sample_indices_per_class[class_index].append(sample_index)
 
-    y_train = np.zeros(labels.shape)
-    y_val = np.zeros(labels.shape)
-    y_test = np.zeros(labels.shape)
-    y_train[train_mask] = labels[train_mask]
-    y_val[val_mask] = labels[val_mask]
-    y_test[test_mask] = labels[test_mask]
+    # get specified number of indices for each class
+    return np.concatenate(
+        [random_state.choice(sample_indices_per_class[class_index], num_examples_per_class, replace=False)
+         for class_index in range(len(sample_indices_per_class))
+         ])
 
-    y_train = y_train.reshape( (labels.shape[0],1) )
-    y_val = y_val.reshape( (labels.shape[0],1) )
-    y_test = y_test.reshape( (labels.shape[0],1) )
+def get_train_val_test_split(random_state,
+                             labels,
+                             train_examples_per_class=None, val_examples_per_class=None,
+                             test_examples_per_class=None,
+                             train_size=None, val_size=None, test_size=None):
+    num_samples, num_classes = labels.shape
+    remaining_indices = list(range(num_samples))
 
-    return adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask
+    if train_examples_per_class is not None:
+        train_indices = sample_per_class(random_state, labels, train_examples_per_class)
+    else:
+        # select train examples with no respect to class distribution
+        train_indices = random_state.choice(remaining_indices, train_size, replace=False)
 
+    if val_examples_per_class is not None:
+        val_indices = sample_per_class(random_state, labels, val_examples_per_class, forbidden_indices=train_indices)
+    else:
+        remaining_indices = np.setdiff1d(remaining_indices, train_indices)
+        val_indices = random_state.choice(remaining_indices, val_size, replace=False)
+
+    forbidden_indices = np.concatenate((train_indices, val_indices))
+    if test_examples_per_class is not None:
+        test_indices = sample_per_class(random_state, labels, test_examples_per_class,
+                                        forbidden_indices=forbidden_indices)
+    elif test_size is not None:
+        remaining_indices = np.setdiff1d(remaining_indices, forbidden_indices)
+        test_indices = random_state.choice(remaining_indices, test_size, replace=False)
+    else:
+        test_indices = np.setdiff1d(remaining_indices, forbidden_indices)
+
+    # assert that there are no duplicates in sets
+    assert len(set(train_indices)) == len(train_indices)
+    assert len(set(val_indices)) == len(val_indices)
+    assert len(set(test_indices)) == len(test_indices)
+    # assert sets are mutually exclusive
+    assert len(set(train_indices) - set(val_indices)) == len(set(train_indices))
+    assert len(set(train_indices) - set(test_indices)) == len(set(train_indices))
+    assert len(set(val_indices) - set(test_indices)) == len(set(val_indices))
+    if test_size is None and test_examples_per_class is None:
+        # all indices must be part of the split
+        assert len(np.concatenate((train_indices, val_indices, test_indices))) == num_samples
+
+    if train_examples_per_class is not None:
+        train_labels = labels[train_indices, :]
+        train_sum = np.sum(train_labels, axis=0)
+        # assert all classes have equal cardinality
+        assert np.unique(train_sum).size == 1
+
+    if val_examples_per_class is not None:
+        val_labels = labels[val_indices, :]
+        val_sum = np.sum(val_labels, axis=0)
+        # assert all classes have equal cardinality
+        assert np.unique(val_sum).size == 1
+
+    if test_examples_per_class is not None:
+        test_labels = labels[test_indices, :]
+        test_sum = np.sum(test_labels, axis=0)
+        # assert all classes have equal cardinality
+        assert np.unique(test_sum).size == 1
+
+    return train_indices, val_indices, test_indices
+
+def load_spitfall_datasets(dataset_str,
+                            data_seed,
+                            standardize_graph = True,
+                            train_examples_per_class = 20,
+                            val_examples_per_class = 30):
+    """Load amazon computers/photo datasets"""
+    """
+    :param dataset_str: Dataset name
+           standardize_graph:  Standardizing includes
+                                1. Making the graph undirected
+                                2. Making the graph unweighted
+                                3. Selecting the largest connected component (LCC)
+           split: Number of samples (i.e. nodes) in the train/val/test sets.
+
+           (Note: The default values above are the same value as pitfall paper https://arxiv.org/pdf/1811.05868.pdf)
+    :return: All data input files loaded (as well the training/test data).
+    """
+
+    if dataset_str != 'amazon_electronics_computers' and dataset_str != 'amazon_electronics_photo':
+        raise ValueError('Wrong dataset name!')
+
+    data_path = "data/{}.npz".format(dataset_str)
+    dataset_graph = load_dataset(data_path)
+
+    # some standardization preprocessing
+    if standardize_graph:
+        dataset_graph = dataset_graph.standardize()
+    else:
+        dataset_graph = dataset_graph.to_undirected()
+        dataset_graph = eliminate_self_loops(dataset_graph)
+
+    adj, features, labels = dataset_graph.unpack()
+    labels = binarize_labels(labels)
+
+    # convert to binary bag-of-words feature representation if necessary
+    if not is_binary_bag_of_words(features):
+        features = to_binary_bag_of_words(features)
+
+    # some assertions that need to hold for all datasets
+    # adj matrix needs to be symmetric
+    assert (adj != adj.T).nnz == 0
+    # features need to be binary bag-of-word vectors
+    assert is_binary_bag_of_words(features), f"Non-binary node_features entry!"
+
+
+    random_state = np.random.RandomState(data_seed)
+    idx_train, idx_val, idx_test = get_train_val_test_split(random_state, labels,
+                            train_examples_per_class=train_examples_per_class,
+                            val_examples_per_class=val_examples_per_class)
+
+    return adj, features, labels, idx_train, idx_val, idx_test
 
 def load_data( dataset_str, data_seed ):
     """
     Loads input data from gcn/data directory
-
-    ind.dataset_str.x => the feature vectors of the training instances as scipy.sparse.csr.csr_matrix object;
-    ind.dataset_str.tx => the feature vectors of the test instances as scipy.sparse.csr.csr_matrix object;
-    ind.dataset_str.allx => the feature vectors of both labeled and unlabeled training instances
-        (a superset of ind.dataset_str.x) as scipy.sparse.csr.csr_matrix object;
-    ind.dataset_str.y => the one-hot labels of the labeled training instances as numpy.ndarray object;
-    ind.dataset_str.ty => the one-hot labels of the test instances as numpy.ndarray object;
-    ind.dataset_str.ally => the labels for instances in ind.dataset_str.allx as numpy.ndarray object;
-    ind.dataset_str.graph => a dict in the format {index: [index_of_neighbor_nodes]} as collections.defaultdict
-        object;
-    ind.dataset_str.test.index => the indices of test instances in graph, for the inductive setting as list object.
-
-    All objects above must be saved using python pickle module.
-
     :param dataset_str: Dataset name
            data_seed:  random seed to split the train/test/dev datasets
                        if None then use the original split
     :return: All data input files loaded (as well the training/test data).
     """
 
-    if dataset_str == 'karate':
-        return load_karate()
+    if 'amazon_electronics' in dataset_str:
+        adj, features, labels, idx_train, idx_val, idx_test = load_spitfall_datasets(dataset_str, data_seed)
+        _nxgraph = nx.from_scipy_sparse_matrix( adj )
+    else:
+        names = ['x', 'y', 'tx', 'ty', 'allx', 'ally', 'graph']
+        objects = []
+        for i in range(len(names)):
+            with open("data/ind.{}.{}".format(dataset_str, names[i]), 'rb') as f:
+                if sys.version_info > (3, 0):
+                    objects.append(pkl.load(f, encoding='latin1'))
+                else:
+                    objects.append(pkl.load(f))
 
-    names = ['x', 'y', 'tx', 'ty', 'allx', 'ally', 'graph']
-    objects = []
-    for i in range(len(names)):
-        with open("data/ind.{}.{}".format(dataset_str, names[i]), 'rb') as f:
-            if sys.version_info > (3, 0):
-                objects.append(pkl.load(f, encoding='latin1'))
-            else:
-                objects.append(pkl.load(f))
+        x, y, tx, ty, allx, ally, graph = tuple(objects)
+        test_idx_reorder = parse_index_file( "data/ind.{}.test.index".format(dataset_str) )
+        test_idx_range = np.sort(test_idx_reorder)
 
-    x, y, tx, ty, allx, ally, graph = tuple(objects)
-    test_idx_reorder = parse_index_file( "data/ind.{}.test.index".format(dataset_str) )
-    test_idx_range = np.sort(test_idx_reorder)
+        if dataset_str == 'citeseer':
+            # Fix citeseer dataset (there are some isolated nodes in the graph)
+            # Find isolated nodes, add them as zero-vecs into the right position
+            test_idx_range_full = range(min(test_idx_reorder), max(test_idx_reorder)+1)
+            tx_extended = sp.lil_matrix((len(test_idx_range_full), x.shape[1]))
+            tx_extended[test_idx_range-min(test_idx_range), :] = tx
+            tx = tx_extended
+            ty_extended = np.zeros((len(test_idx_range_full), y.shape[1]))
+            ty_extended[test_idx_range-min(test_idx_range), :] = ty
+            ty = ty_extended
 
-    if dataset_str == 'citeseer':
-        # Fix citeseer dataset (there are some isolated nodes in the graph)
-        # Find isolated nodes, add them as zero-vecs into the right position
-        test_idx_range_full = range(min(test_idx_reorder), max(test_idx_reorder)+1)
-        tx_extended = sp.lil_matrix((len(test_idx_range_full), x.shape[1]))
-        tx_extended[test_idx_range-min(test_idx_range), :] = tx
-        tx = tx_extended
-        ty_extended = np.zeros((len(test_idx_range_full), y.shape[1]))
-        ty_extended[test_idx_range-min(test_idx_range), :] = ty
-        ty = ty_extended
+        features = sp.vstack((allx, tx)).tolil()
+        features[test_idx_reorder, :] = features[test_idx_range, :]
+        _nxgraph = nx.from_dict_of_lists( graph )
+        adj = nx.adjacency_matrix( _nxgraph )
 
-    features = sp.vstack((allx, tx)).tolil()
-    features[test_idx_reorder, :] = features[test_idx_range, :]
-    _nxgraph = nx.from_dict_of_lists( graph )
-    adj = nx.adjacency_matrix( _nxgraph )
+        labels = np.vstack((ally, ty))
+        labels[test_idx_reorder, :] = labels[test_idx_range, :]
 
-    labels = np.vstack((ally, ty))
-    labels[test_idx_reorder, :] = labels[test_idx_range, :]
+        idx_test = test_idx_range.tolist()
+        idx_train = range(len(y))
+        idx_val   = range(len(y), len(y)+500)
 
-    idx_test = test_idx_range.tolist()
-    idx_train = range(len(y))
-    idx_val   = range(len(y), len(y)+500)
+        if data_seed is not None:
+            chaos = np.random.RandomState( data_seed )
+            allidx = list(idx_train) + list(idx_val) + idx_test
+            chaos.shuffle( allidx )
 
-    if data_seed is not None:
-        chaos = np.random.RandomState( data_seed )
-        allidx = list(idx_train) + list(idx_val) + idx_test
-        chaos.shuffle( allidx )
+            idx_train = allidx[:len(y)]
+            idx_val   = allidx[len(y):len(y)+500]
+            idx_test  = allidx[len(y)+500:]
 
-        idx_train = allidx[:len(y)]
-        idx_val   = allidx[len(y):len(y)+500]
-        idx_test  = allidx[len(y)+500:]
 
     train_mask = sample_mask( idx_train, labels.shape[0] )
     val_mask   = sample_mask( idx_val, labels.shape[0]   )
@@ -291,4 +418,3 @@ def preprocess_high_order_adj( adj, order, eps ):
 
     adj_sum += sp.eye( adj.shape[0] )
     return sym_normalize_adj( adj_sum + adj_sum.T )
-

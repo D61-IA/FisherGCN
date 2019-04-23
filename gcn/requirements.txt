@@ -1,0 +1,5 @@
+numpy==1.16.3
+scipy==1.2.1
+tensorflow==1.13.1
+networkx==2.3
+scikit-learn==0.20.3
