@@ -1,5 +1,8 @@
+Our codes are based on the codes provided by the following papers:
+"T. Kipf, M. Welling. Semi-Supervised Classification with Graph Convolutional Networks. 2016."
+"O. Shchur, M. Mumme, A. Bojchevski, S. Günnemann. Pitfalls of Graph Neural Network Evaluation. 2018."
+
 The following individuals take credits to the coding works:
 
-Thomas Kipf      (Original GCN)
-Zhen (Jeff) Wang (adapt GCN to random walk similarity; HPC scripts)
+Zhen (Jeff) Wang (adapt GCN to random walk similarities; HPC scripts)
 Ke Sun           (FisherGCN)

@@ -11,12 +11,12 @@ from utils import *
 from models import GCN, MLP
 from block_krylov import block_krylov
 
-flags = tf.app.flags
+from absl import app, flags
 FLAGS = flags.FLAGS
 flags.DEFINE_string(  'dataset', 'cora', 'Dataset string.' )          # 'cora', 'citeseer', 'pubmed', 'amazon_electronics_computers', 'amazon_electronics_photo'
-flags.DEFINE_boolean( 'randomsplit', False, 'random split of train:valid:test' ) # random split is recommended for a more complete comparison
+flags.DEFINE_integer( 'randomsplit', 0, 'random split of train:valid:test' ) # 0/1: random split is recommended for a more complete comparison
 
-flags.DEFINE_string(  'model',   'fishergcn',    'Model string.' )    # 'gcn', 'gcnT', 'fishergcn', 'fishergcnT', 'gcn_cheby', 'dense'
+flags.DEFINE_string(  'model',   'fishergcn',    'Model string.' )    # 'gcn', 'gcnR', 'gcnT', 'fishergcn', 'fishergcnT', 'gcn_cheby', 'dense'
 flags.DEFINE_float(   'learning_rate', 0.01, 'Initial learning rate.' )
 flags.DEFINE_float(   'dropout', 0.5, 'Dropout rate (1 - keep probability).' )
 flags.DEFINE_integer( 'epochs', 500, 'Number of epochs to train.' )
@@ -28,9 +28,12 @@ flags.DEFINE_integer( 'max_degree', 3, 'Maximum Chebyshev polynomial degree.' )
 flags.DEFINE_integer( 'seed',   2019, 'random seed' )
 flags.DEFINE_integer( 'repeat', 20, 'number of repeats' )
 
-# for high-order GCN
+# for gcnT
 flags.DEFINE_integer( 'order', 5, 'order of high-order GCN' )
 flags.DEFINE_float(   'threshold', 1e-4, 'A threshold to apply nodes filtering on random walk matrix.' )
+
+# for gcnR
+flags.DEFINE_float(   'mask_prob', 0.0001, 'corruption rate of the adjacency matrix' )
 
 # Fisher-GCN corresponds to fisher_freq=1 & fisher_adversary=1; other setting of these two parameters are varations
 # in practice, one only needs to tune the fisher_noise parameter
@@ -60,6 +63,10 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
 
     if FLAGS.model == 'gcn':
         support = [ sparse_to_tuple( preprocess_adj(adj) ) ]
+        model_func = GCN
+
+    elif FLAGS.model == 'gcnR':
+        support = [ sparse_to_tuple( adj ) ]
         model_func = GCN
 
     elif FLAGS.model == 'gcnT':
@@ -195,7 +202,6 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
             print( 'unknown early stopping strategy:', FLAGS.early_stop )
             sys.exit(0)
 
-
     if FLAGS.retrace:
         history = [ _r for _r in history if os.access( _r[0]+".meta", os.R_OK ) ]
         history.sort( key=lambda r:r[1], reverse=True )
@@ -210,7 +216,7 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
 
     return history[-1][1], history[-1][2], test_cost, test_acc
 
-def main():
+def main( argv ):
     if FLAGS.dataset == 'all':
         datasets = [ 'cora', 'citeseer', 'pubmed' ]
     else:
@@ -218,7 +224,7 @@ def main():
 
     for _dataset in datasets:
         start_t = time.time()
-        if FLAGS.randomsplit:
+        if FLAGS.randomsplit == 1:
             result = np.array( [ exp( i, _dataset, data_seed=data_seed )
                                  for data_seed in range(10)
                                  for i in range(10) ] )
@@ -235,4 +241,4 @@ def main():
         print( '{} {} final_test      {:.3f} {:.2f} {:.3f} {:.2f}'.format( FLAGS.model, _dataset, _mean[2], _std[2], _mean[3], _std[3] ) )
 
 if __name__ == '__main__':
-    main()
+    app.run( main )

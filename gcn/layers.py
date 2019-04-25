@@ -2,7 +2,7 @@ from inits import *
 import tensorflow as tf
 import scipy
 
-flags = tf.app.flags
+from absl import flags
 FLAGS = flags.FLAGS
 
 # global unique layer ID dictionary for layer name assignment
@@ -195,8 +195,26 @@ class GraphConvolution(Layer):
                 supports.append( ( support ) )
 
             elif self.perturbation is None:
-                support = dot( self.support[i], pre_sup, sparse=True )
-                supports.append( support )
+                if FLAGS.model == 'gcn':
+                    support = dot( self.support[i], pre_sup, sparse=True )
+                    supports.append( support )
+
+                elif FLAGS.model == 'gcnR':
+                    N = self.input_rows
+                    indices = tf.random.uniform( [int(N*N*FLAGS.mask_prob),2], 0, N, dtype=tf.int64 )
+                    values  = -tf.ones( (int(N*N*FLAGS.mask_prob),), dtype=tf.float32 )
+                    cA = tf.math.abs( tf.sparse.add( self.support[i], tf.SparseTensor( indices, values, [N,N] ) ) )
+                    cA = tf.sparse.add( cA, tf.sparse.eye( N ) )
+                    cA = tf.sparse.add( cA, tf.sparse.transpose(cA) )
+                    _inv_degree = tf.pow( tf.sparse.reduce_sum( cA, axis=1, keepdims=True ), -0.5 )
+
+                    pre_sup = pre_sup * _inv_degree
+                    support = dot( cA, pre_sup, sparse=True )
+                    support = support * _inv_degree
+                    supports.append( support )
+
+                else:
+                    raise RuntimeError( 'unknown model' )
 
             else:
                 support = dot( self.support[i], pre_sup, sparse=True )

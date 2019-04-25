@@ -1,7 +1,7 @@
 from layers import *
 from metrics import *
 
-flags = tf.app.flags
+from absl import flags
 FLAGS = flags.FLAGS
 
 class Model(object):
