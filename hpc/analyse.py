@@ -66,40 +66,38 @@ def main():
         if len( lcurves ) == 0 : continue
 
         figname = data + '.pdf'
-        fig, ax = plt.subplots( 2,1,figsize=(12,10) )
+        fig, ax = plt.subplots( 3,1,figsize=(8,16) )
 
         styles = list(itertools.product(markers, linestyles))
         shuffle(styles)
         styles = styles[:len(lcurves)]
-        for (model, lc), style in zip(lcurves, styles):
-            lc_mean = np.mean( lc, axis=0 )
-            lc_std = np.std( lc, axis=0 )
-            ax[0].errorbar( range(lc_mean.shape[0]), lc_mean[:,1], lc_std[:,1],
-                    fmt=style[0], ls=style[1], markevery=5, errorevery=5,
-                    label='Training {}'.format(model) )
-            ax[0].errorbar( range(lc_mean.shape[0]), lc_mean[:,3], lc_std[:,3],
-                    fmt=style[0], ls=style[1], markevery=5, errorevery=5,
-                    label='validation {}'.format(model) )
-            ax[1].errorbar( range(lc_mean.shape[0]), lc_mean[:,0], lc_std[:,0],
-                    fmt=style[0], ls=style[1], markevery=5, errorevery=5,
-                    label='Training {}'.format(model) )
-            ax[1].errorbar( range(lc_mean.shape[0]), lc_mean[:,2], lc_std[:,2],
-                    fmt=style[0], ls=style[1], markevery=5, errorevery=5,
-                    label='validation {}'.format(model) )
-        ax[0].set_xlabel( 'Epoch' )
-        ax[0].set_ylabel( 'Accuracy' )
-        ax[0].set_title( 'Learning Curves (Accuracy)' )
-        ax[0].grid()
-        ax[0].legend()
-        ax[1].set_xlabel('Epoch')
-        ax[1].set_ylabel('Loss')
-        ax[1].set_title('Learning Curves (Loss) ')
-        ax[1].grid()
-        ax[1].legend()
+
+        def axs_errorbar(axs, ylabels, titles):
+            for (model, lc), style in zip(lcurves, styles):
+                lc_mean = np.mean( lc, axis=0 )
+                lc_std = np.std( lc, axis=0 )
+                x = range(lc_mean.shape[0])
+
+                for idx, ax in zip([0,1,1], reversed(axs)):
+                    ax.errorbar(x, lc_mean[:,idx], lc_std[:,idx],
+                                fmt=style[0], ls=style[1],  label='Training {}'.format(model),
+                                markevery=5, errorevery=5, capsize=5, alpha=0.5)
+                    ax.errorbar(x, lc_mean[:,idx+2], lc_std[:,idx+2],
+                                fmt=style[0], ls=style[1], label='Validation {}'.format(model),
+                                markevery=5, errorevery=5, capsize=5, alpha=0.5)
+            axs[1].set_xlim(0, 40)
+            axs[1].set_ylim(60, 100)
+            for ax, t, yl in zip(axs, titles, ylabels):
+                ax.set_xlabel('Epoch')
+                ax.set_ylabel(yl)
+                ax.set_title(t)
+                ax.grid()
+                ax.legend()
+
+        titles = ['Learning Curves (Accuracy)', 'Learning Curves - Zoom in (Accuracy)', 'Learning Curves (Loss)']
+        ylabels = ['Accuracy', 'Accuracy', 'Loss']
+        axs_errorbar(ax, ylabels, titles)
         fig.savefig( figname )
-
-
-        print( '' )
 
 if __name__ == '__main__':
     main()
