@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from __future__ import division, absolute_import, print_function
+import matplotlib.pyplot as plt
 
 import os, time, shutil
 import tensorflow as tf
@@ -159,6 +160,7 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
     sess.run( tf.global_variables_initializer() )
 
     history = []
+    acc_and_loss = {'train_acc':[], 'train_loss':[], 'val_acc':[], 'val_loss':[]}
     for epoch in range( FLAGS.epochs ):
         t = time.time()
 
@@ -174,6 +176,11 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
             _file = None
         _cost, _acc, duration = evaluate( 0.0, features, support, y_val, val_mask, placeholders )
         history.append( (_file, _cost, _acc) )
+
+        acc_and_loss['train_acc'].append(outs[-1])
+        acc_and_loss['train_loss'].append(outs[-2])
+        acc_and_loss['val_acc'].append(_acc)
+        acc_and_loss['val_loss'].append(_cost)
 
         if ( epoch + 1 ) % 10 == 0:
             print("Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.5f}".format(outs[-2]),
@@ -213,6 +220,25 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
     print( "Test set results:", "cost=", "{:.5f}".format(test_cost),
            "accuracy=", "{:.5f}".format(test_acc),
            "time=", "{:.5f}".format(test_duration) )
+
+
+    print(len(acc_and_loss['train_acc']), FLAGS.epochs)
+    fig, ax = plt.subplots(2,1,figsize=(6,10))
+    ax[0].plot(range( len(acc_and_loss['train_acc']) ), acc_and_loss['train_acc'], 'b', label='Training Accuracy')
+    ax[0].plot(range( len(acc_and_loss['val_acc']) ), acc_and_loss['val_acc'], 'r', label='Validation Accuracy')
+    ax[0].set_xlabel('Epoch')
+    ax[0].set_ylabel('Accuracy')
+    ax[0].set_title('Learning Curves (Accuracy)')
+    ax[0].grid()
+    ax[0].legend()
+    ax[1].plot(range( len(acc_and_loss['train_loss']) ), acc_and_loss['train_loss'], 'c', label='Training Loss')
+    ax[1].plot(range( len(acc_and_loss['val_loss']) ), acc_and_loss['val_loss'], 'm', label='Validation Loss')
+    ax[1].set_xlabel('Epoch')
+    ax[1].set_ylabel('Loss')
+    ax[1].set_title('Learning Curves (Loss) ')
+    ax[1].grid()
+    ax[1].legend()
+    fig.savefig('loop_{}_{}_learning_curve.png'.format(run, dataset))
 
     return history[-1][1], history[-1][2], test_cost, test_acc
 
