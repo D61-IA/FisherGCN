@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 from __future__ import division, absolute_import, print_function
-import matplotlib.pyplot as plt
 
 import os, time, shutil
 import tensorflow as tf
@@ -160,7 +159,7 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
     sess.run( tf.global_variables_initializer() )
 
     history = []
-    acc_and_loss = {'train_acc':[], 'train_loss':[], 'val_acc':[], 'val_loss':[]}
+    history_files = []
     for epoch in range( FLAGS.epochs ):
         t = time.time()
 
@@ -174,35 +173,33 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
             _file = saver.save( sess, '{}/gcn'.format( runid ), global_step=epoch )
         else:
             _file = None
-        _cost, _acc, duration = evaluate( 0.0, features, support, y_val, val_mask, placeholders )
-        history.append( (_file, _cost, _acc) )
+        val_cost, val_acc, duration = evaluate( 0.0, features, support, y_val, val_mask, placeholders )
 
-        acc_and_loss['train_acc'].append(outs[-1])
-        acc_and_loss['train_loss'].append(outs[-2])
-        acc_and_loss['val_acc'].append(_acc)
-        acc_and_loss['val_loss'].append(_cost)
+        history_files.append( _file )
+        history.append( (outs[1], outs[2], val_cost, val_acc) )
+        # tuples in the form ( train_cost, train_acc, val_cost, val_acc )
 
         if ( epoch + 1 ) % 10 == 0:
-            print("Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.5f}".format(outs[-2]),
-                  "train_acc=", "{:.5f}".format(outs[-1]),
-                  "val_loss=", "{:.5f}".format(_cost),
-                  "val_acc=", "{:.5f}".format(_acc),
+            print("Epoch:", '%04d' % (epoch + 1),
+                  "train_loss=", "{:.5f}".format(outs[1]),
+                  "train_acc=", "{:.5f}".format(outs[2]),
+                  "val_loss=", "{:.5f}".format(val_cost),
+                  "val_acc=", "{:.5f}".format(val_acc),
                   "time=", "{:.5f}".format(time.time() - t))
-
             #print( 'perterbation radius:', sess.run( pradius ) )
 
         if FLAGS.early_stop == 0:
             pass
 
         elif FLAGS.early_stop == 1:    # simple early stopping
-            if epoch > 20 and history[-1][1] > np.mean( [r[1] for r in history[-11:-1]] ) \
-                          and history[-1][2] < np.mean( [r[2] for r in history[-11:-1]] ):
+            if epoch > 20 and history[-1][2] > np.mean( [r[2] for r in history[-11:-1]] ) \
+                          and history[-1][3] < np.mean( [r[3] for r in history[-11:-1]] ):
                 print( "Early stopping at epoch {}...".format( epoch ) )
                 break
 
         elif FLAGS.early_stop == 2:    # more strict conditions
             if epoch > 100 \
-                and np.mean( [r[1] for r in history[-10:]] ) > np.mean( [r[1] for r in history[-100:]] ):
+                and np.mean( [r[2] for r in history[-10:]] ) > np.mean( [r[2] for r in history[-100:]] ):
                     print( "Early stopping at epoch {}...".format( epoch ) )
                     break
         else:
@@ -210,10 +207,10 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
             sys.exit(0)
 
     if FLAGS.retrace:
-        history = [ _r for _r in history if os.access( _r[0]+".meta", os.R_OK ) ]
-        history.sort( key=lambda r:r[1], reverse=True )
+        history = [ _r for _r in zip(history_files,history) if os.access( _r[0]+".meta", os.R_OK ) ]
+        history.sort( key=lambda r:r[4], reverse=True )
         sess = tf.Session()
-        saver.restore( sess, history[-1][0] )
+        saver.restore( sess, history[0][0] )
         shutil.rmtree( runid )
 
     test_cost, test_acc, test_duration = evaluate( 0.0, features, support, y_test, test_mask, placeholders )
@@ -221,50 +218,49 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
            "accuracy=", "{:.5f}".format(test_acc),
            "time=", "{:.5f}".format(test_duration) )
 
+    return history, test_cost, test_acc
 
-    print(len(acc_and_loss['train_acc']), FLAGS.epochs)
-    fig, ax = plt.subplots(2,1,figsize=(6,10))
-    ax[0].plot(range( len(acc_and_loss['train_acc']) ), acc_and_loss['train_acc'], 'b', label='Training Accuracy')
-    ax[0].plot(range( len(acc_and_loss['val_acc']) ), acc_and_loss['val_acc'], 'r', label='Validation Accuracy')
-    ax[0].set_xlabel('Epoch')
-    ax[0].set_ylabel('Accuracy')
-    ax[0].set_title('Learning Curves (Accuracy)')
-    ax[0].grid()
-    ax[0].legend()
-    ax[1].plot(range( len(acc_and_loss['train_loss']) ), acc_and_loss['train_loss'], 'c', label='Training Loss')
-    ax[1].plot(range( len(acc_and_loss['val_loss']) ), acc_and_loss['val_loss'], 'm', label='Validation Loss')
-    ax[1].set_xlabel('Epoch')
-    ax[1].set_ylabel('Loss')
-    ax[1].set_title('Learning Curves (Loss) ')
-    ax[1].grid()
-    ax[1].legend()
-    fig.savefig('loop_{}_{}_learning_curve.png'.format(run, dataset))
+def analyse( dataset, result, ofilename ):
+    min_epochs = min( [ len(r[0]) for r in result ] )
+    lcurves    = np.array( [ r[0][:min_epochs] for r in result ] )
 
-    return history[-1][1], history[-1][2], test_cost, test_acc
+    final_result = np.array( [ r[0][-1]+(r[1], r[2]) for r in result ] )
+    scores = np.mean( final_result, axis=0 )
+    std    = np.std( final_result, axis=0 )
+
+    np.savez( ofilename, lcurves=lcurves, scores=scores, std=std )
+
+    print( '{} {} final_train {:.3f} {:.3f}'.format( FLAGS.model, dataset, scores[0], scores[1] ) )
+    print( '{} {} final_valid {:.3f} {:.3f}'.format( FLAGS.model, dataset, scores[2], scores[3] ) )
+    print( '{} {} final_test  {:.3f} {:.3f}'.format( FLAGS.model, dataset, scores[4], scores[5] ) )
 
 def main( argv ):
     if FLAGS.dataset == 'all':
-        datasets = [ 'cora', 'citeseer', 'pubmed' ]
+        datasets = [ 'cora', 'citeseer', 'pubmed', 'amazon_electronics_computers', 'amazon_electronics_photo' ]
     else:
         datasets = [ FLAGS.dataset ]
 
     for _dataset in datasets:
         start_t = time.time()
+        result = []
         if FLAGS.randomsplit == 1:
-            result = np.array( [ exp( i, _dataset, data_seed=data_seed )
-                                 for data_seed in range(10)
-                                 for i in range(10) ] )
+            for data_seed in range( FLAGS.seed, FLAGS.seed+10 ):
+                for i in range( 10 ):
+                    result.append( exp( i, _dataset, data_seed=data_seed ) )
         else:
-            result = np.array( [ exp(i, _dataset) for i in range( FLAGS.repeat ) ] )
-        result[:,1] *= 100
-        result[:,3] *= 100
+            for i in range( FLAGS.repeat ):
+                result.append( exp(i, _dataset) )
 
-        _mean = result.mean(0)
-        _std  = result.std(0)
+        ofilename = "{}_{}_lr{}_drop{}_reg{}_hidden{}_early{}".format(
+                    FLAGS.model, _dataset, FLAGS.learning_rate, FLAGS.dropout,
+                    FLAGS.weight_decay, FLAGS.hidden1, FLAGS.early_stop )
+        if 'fisher' in FLAGS.model:
+            ofilename += "_rank{}_perturb{}_noise{}_freq{}_adv{}".format(
+                          FLAGS.fisher_rank, FLAGS.fisher_perturbation,
+                          FLAGS.fisher_noise, FLAGS.fisher_freq, FLAGS.fisher_adversary )
+        analyse( _dataset, result, ofilename )
 
         print( 'finished in {:.2f} hours'.format( (time.time()-start_t)/3600 ) )
-        print( '{} {} final_valid     {:.3f} {:.2f} {:.3f} {:.2f}'.format( FLAGS.model, _dataset, _mean[0], _std[0], _mean[1], _std[1] ) )
-        print( '{} {} final_test      {:.3f} {:.2f} {:.3f} {:.2f}'.format( FLAGS.model, _dataset, _mean[2], _std[2], _mean[3], _std[3] ) )
 
 if __name__ == '__main__':
     app.run( main )

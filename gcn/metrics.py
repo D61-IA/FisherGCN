@@ -10,10 +10,7 @@ def masked_softmax_cross_entropy(preds, labels, mask):
     return tf.reduce_mean(loss)
 
 def masked_accuracy( preds, labels, mask ):
-    """Accuracy with masking."""
+    """Accuracy with masking (in percentage) """
     correct_prediction = tf.cast( tf.equal( tf.argmax(preds, 1), tf.argmax(labels, 1) ), tf.float32 )
     mask = tf.cast( mask, dtype=tf.float32 )
-    return tf.reduce_sum( mask * correct_prediction ) / tf.reduce_sum( mask )
-
-    #acc, acc_op = tf.metrics.accuracy( labels=tf.argmax(labels,1), predictions=tf.argmax(preds,1), weights=mask )
-    #return acc_op
+    return 100 * tf.reduce_sum( mask * correct_prediction ) / tf.reduce_sum( mask )

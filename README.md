@@ -1,4 +1,4 @@
-# Fisher-Bures Adversary Graph Convolutional Network
+# Fisher-Bures Adversary Graph Convolutional Networks
 
 This is a reference implementation of the paper [K. Sun, P. Koniusz, Z. Wang. Fisher-Bures Adversary Graph Convolutional Network. 2019](https://arxiv.org/abs/1903.04154)
 
@@ -8,7 +8,7 @@ Based on information geometry, the intrinsic shape of the isotropic noise corres
 
 ## Performance
 
-The folowing table shows the average (after 20 runs) testing accuracy and testing loss on the cacnonical split the datasets, based on a GCN model with one hidden layer of size 64, learning rate 0.01, dropout rate 0.5, regularization strength 0.0005, and unified early stopping criterion.
+The following table shows the average (after 20 runs) testing accuracy and testing loss on the cacnonical split the datasets, based on a GCN model with one hidden layer of size 64, learning rate 0.01, dropout rate 0.5, regularization strength 0.0005, and unified early stopping criterion.
 
 | Model | Cora | Citeseer | Pubmed |
 | --- | --- | --- | --- |

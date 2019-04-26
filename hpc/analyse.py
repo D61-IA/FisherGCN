@@ -1,79 +1,89 @@
 #!/usr/bin/env python
 
-import sys, os, re
+import sys, os
 import numpy as np
+import matplotlib.pyplot as plt
 
-def output( model, data, key='' ):
-    if not (data,model) in result: return
-    query = result[(data,model)]
-
+def output( query, key='' ):
     query = [ r for r in query if key in r[0] ]
-    query = sorted( query, key=lambda r:r[2], reverse=True )
+    query = sorted( query, key=lambda r:r[1][5], reverse=True )
 
     if len(query) > 0:
-        filename, valid_acc, test_acc, test_acc_std, test_c = query[0]
-        print( '{:.2f}\pm{:.1f} {:.3f} val{:.2f} {} ({} runs)'.format( test_acc, test_acc_std, test_c, valid_acc, filename, len(query) ) )
+        filename, scores, std = query[0]
+        print( '{:.2f}\pm{:.1f} {:.3f}\pm{:.2f} {} ({} runs)'.format( scores[5], std[5], scores[4], std[4], filename, len(query) ) )
 
-pattern_v = re.compile( 'final_valid\s+\d+' )
-pattern_t = re.compile( 'final_test\s+\d+' )
+        raw = np.load( filename )
+        lcurves = raw['lcurves']
+    else:
+        lcurves = None
 
-if len( sys.argv )>1:
-    root = sys.argv[1] 
-else:
-    root = "."
+    return lcurves
 
-if len( sys.argv ) > 2:
-    keys = sys.argv[2:]
-else:
-    keys = ['']
+def main():
+    if len( sys.argv ) > 1:
+        root = sys.argv[1] 
+    else:
+        root = "."
 
-result = {}
+    if len( sys.argv ) > 2:
+        keys = sys.argv[2:]
+    else:
+        keys = ['']
 
-for dirs, subdirs, files in os.walk( root ):
-    for filename in files:
-        haskey = True
-        for key in keys:
-            if not key in filename: haskey = False
-        if not haskey: continue
+    result = {}
 
-        fullname = os.path.join( root, filename )
-        if not os.access( fullname, os.R_OK ): continue
+    for dirs, subdirs, files in os.walk( root ):
+        for filename in files:
+            haskey = True
+            for key in keys:
+                if not key in filename: haskey = False
+            if not haskey: continue
 
-        for line in open( fullname ):
-            if pattern_v.search( line ):
-                try:
-                    data = line.split()[1]
-                    model = line.split()[0]
-                    _val = float( line.split()[5] )
-                    if (data,model) in result:
-                        result[(data,model)].append( [ filename, _val ] )
-                    else:
-                        result[(data,model)] = [ [ filename, _val ] ]
-                except ValueError:
-                    print( 'error parsing', filename )
-                    break
+            fullname = os.path.join( root, filename )
+            if not fullname.endswith( 'npz' ): continue
+            if not os.access( fullname, os.R_OK ): continue
 
-            elif pattern_t.search( line ):
-                try:
-                    data = line.split()[1]
-                    model = line.split()[0]
-                    _test    = float( line.split()[5] )
-                    _teststd = float( line.split()[6] )
-                    _test_c  = float( line.split()[3] )
-                    result[(data,model)][-1] += [ _test, _teststd, _test_c ]
-                except ValueError:
-                    print( 'error parsing', filename )
-                    break
+            raw = np.load( fullname )
+            scores = raw['scores']
+            std    = raw['std']
 
-for data in ['cora', 'citeseer', 'pubmed']:
-    for model in ['gcn', 'fishergcn', 'gcnT', 'fishergcnT']:
-        if 'fisher' in model:
-            output( model, data, 'freq0' )
-            output( model, data, 'freq1' )
-            output( model, data, 'freq2' )
-            #output( model, data )
-        else:
-            output( model, data )
+            model, data = filename.split('_')[:2]
+            if (data,model) in result:
+                result[(data,model)].append( ( fullname, scores, std ) )
+            else:
+                result[(data,model)] = [ ( fullname, scores, std ) ]
 
-    print( '' )
+    for data in [ 'cora', 'citeseer', 'pubmed', 'amazon_electronics_computers', 'amazon_electronics_photo' ]:
+        lcurves = []
+        for model in [ 'gcn', 'fishergcn', 'gcnT', 'fishergcnT' ]:
+            if not (data,model) in result: continue
+            lcurves.append( ( model, output( result[(data,model)] ) ) )
+        if len( lcurves ) == 0 : continue
 
+        figname = data + '.pdf'
+        fig, ax = plt.subplots( 2,1,figsize=(6,10) )
+
+        for model, lc in lcurves:
+            lc_mean = np.mean( lc, axis=0 )
+            ax[0].plot( range(lc_mean.shape[0]), lc_mean[:,1], label='Training {}'.format(model) )
+            ax[0].plot( range(lc_mean.shape[0]), lc_mean[:,3], label='validation {}'.format(model) )
+        ax[0].set_xlabel( 'Epoch' )
+        ax[0].set_ylabel( 'Accuracy' )
+        ax[0].set_title( 'Learning Curves (Accuracy)' )
+        ax[0].grid()
+        ax[0].legend()
+
+        for model, lc in lcurves:
+            lc_mean = np.mean( lc, axis=0 )
+            ax[1].plot( range(lc_mean.shape[0]), lc_mean[:,0], label='Training {}'.format(model) )
+            ax[1].plot( range(lc_mean.shape[0]), lc_mean[:,2], label='validation {}'.format(model) )
+        ax[1].set_xlabel('Epoch')
+        ax[1].set_ylabel('Loss')
+        ax[1].set_title('Learning Curves (Loss) ')
+        ax[1].grid()
+        ax[1].legend()
+        fig.savefig( figname )
+        print( '' )
+
+if __name__ == '__main__':
+    main()
