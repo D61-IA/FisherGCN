@@ -89,17 +89,14 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
             V = V[:,:FLAGS.fisher_rank]
             w = ( sp.csr_matrix.dot( L, V ) * V ).sum(0)
             #w, V = sp.linalg.eigsh( A, k=FLAGS.fisher_rank+nsubgraphs )
-            perturb = tf.random.uniform( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), dtype=tf.float32 )
 
         elif FLAGS.fisher_freq == 1:
             V = block_krylov( L, FLAGS.fisher_rank )
             w = ( sp.csr_matrix.dot( L, V ) * V ).sum(0)
-            perturb = tf.random.uniform( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), minval=-.5, maxval=.5, dtype=tf.float32 )
 
         elif FLAGS.fisher_freq == 2:
             V, _ = np.linalg.qr( np.random.randn(N, FLAGS.fisher_rank) )
             w = np.ones( FLAGS.fisher_rank )
-            perturb = tf.random.uniform( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), minval=-.5, maxval=.5, dtype=tf.float32 )
 
         else:
             print( 'unknown frequency:', FLAGS.fisher_freq )
@@ -113,11 +110,23 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
             #_dirs =  pradius * _dirs / tf.trace( _dirs )
             #perturb = tf.matmul( _dirs, tf.random.normal( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), dtype=tf.float32 ) )
 
-            _dirs = tf.sigmoid( tf.get_variable( 'perturbation', shape=(FLAGS.fisher_rank, 1), dtype=tf.float32 ) )
-            perturb = _dirs * perturb
+            perturb = tf.random.uniform( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), minval=-.5, maxval=.5, dtype=tf.float32 )
+            _scaling = tf.sigmoid( tf.get_variable( 'perturbation_scaling', shape=(FLAGS.fisher_rank, 1), dtype=tf.float32 ) )
+            perturb = _scaling * perturb
 
-        metric_w = tf.constant( np.sqrt(w/w.mean()), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
-        inc_w = placeholders['noise'] * metric_w * perturb
+        else:
+            perturb = tf.random.uniform( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), minval=-.5, maxval=.5, dtype=tf.float32 )
+
+        ptensor  = tf.constant( w/w.sum(), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
+        metric_w = tf.constant( 1/np.sqrt(w/w.sum()), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
+        new_p = ptensor * tf.exp( placeholders['noise'] * metric_w * perturb )
+        new_p = new_p / tf.reduce_sum( new_p, axis=0 )
+        inc_w = ( new_p - ptensor ) * w.sum()
+
+        # additive noise
+        #metric_w = tf.constant( np.sqrt(w/w.mean()), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
+        #inc_w = placeholders['noise'] * metric_w * perturb
+
         perturbation = ( tf.constant( V, dtype=tf.float32, name='FisherV' ), inc_w )
         support    = [ sparse_to_tuple( A ) ]
         model_func = GCN
@@ -199,7 +208,8 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
 
         elif FLAGS.early_stop == 2:    # more strict conditions
             if epoch > 100 \
-                and np.mean( [r[2] for r in history[-10:]] ) > np.mean( [r[2] for r in history[-100:]] ):
+                and np.mean( [r[2] for r in history[-10:]] ) > np.mean( [r[2] for r in history[-100:]] ) \
+                and np.mean( [r[3] for r in history[-10:]] ) < np.mean( [r[3] for r in history[-100:]] ):
                     print( "Early stopping at epoch {}...".format( epoch ) )
                     break
         else:
@@ -245,7 +255,7 @@ def main( argv ):
         result = []
         if FLAGS.randomsplit == 1:
             for data_seed in range( FLAGS.seed, FLAGS.seed+10 ):
-                for i in range( 10 ):
+                for i in range( FLAGS.repeat ):
                     result.append( exp( i, _dataset, data_seed=data_seed ) )
         else:
             for i in range( FLAGS.repeat ):

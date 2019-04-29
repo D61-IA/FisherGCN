@@ -49,7 +49,12 @@ def main():
             scores = raw['scores']
             std    = raw['std']
 
-            model, data = filename.split('_')[:2]
+            model = filename.split('_')[0]
+            data  = filename.split('_')[1]
+            if data == 'amazon':
+                data += '_' + filename.split('_')[2]
+                data += '_' + filename.split('_')[3]
+
             if (data,model) in result:
                 result[(data,model)].append( ( fullname, scores, std ) )
             else:
