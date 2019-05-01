@@ -5,6 +5,7 @@ from __future__ import division, absolute_import, print_function
 import os, time, shutil
 import tensorflow as tf
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_AUTO_MIXED_PRECISION'] = '1'
 
 import scipy.sparse as sp
 from utils import *
@@ -14,7 +15,7 @@ from block_krylov import block_krylov
 from absl import app, flags
 FLAGS = flags.FLAGS
 flags.DEFINE_string(  'dataset', 'cora', 'Dataset string.' )          # 'cora', 'citeseer', 'pubmed', 'amazon_electronics_computers', 'amazon_electronics_photo'
-flags.DEFINE_integer( 'randomsplit', 0, 'random split of train:valid:test' ) # 0/1: random split is recommended for a more complete comparison
+flags.DEFINE_integer( 'randomsplit', 0, 'random split of train:valid:test' ) # 0/1/2.... random split is recommended for a more complete comparison
 
 flags.DEFINE_string(  'model',   'fishergcn',    'Model string.' )    # 'gcn', 'gcnR', 'gcnT', 'fishergcn', 'fishergcnT', 'gcn_cheby', 'dense'
 flags.DEFINE_float(   'learning_rate', 0.01, 'Initial learning rate.' )
@@ -22,7 +23,8 @@ flags.DEFINE_float(   'dropout', 0.5, 'Dropout rate (1 - keep probability).' )
 flags.DEFINE_integer( 'epochs', 500, 'Number of epochs to train.' )
 flags.DEFINE_integer( 'hidden1', 64, 'Number of units in hidden layer 1.' )
 flags.DEFINE_float(   'weight_decay', 5e-4, 'Weight for L2 loss on embedding matrix.' )
-flags.DEFINE_integer( 'early_stop', 1, 'early_stop strategy' )        # 0: no stop 1: simple early stop 2: more strict conditions
+flags.DEFINE_integer( 'early_stop', 2, 'early_stop strategy' )        # 0: no stop 1: simple early stop 2: more strict conditions
+flags.DEFINE_boolean( 'save', False, 'save npz file which contains the learning results' )
 flags.DEFINE_boolean( 'retrace', False, 'recover the model with the minimum validation loss' )
 flags.DEFINE_integer( 'max_degree', 3, 'Maximum Chebyshev polynomial degree.' )
 flags.DEFINE_integer( 'seed',   2019, 'random seed' )
@@ -37,9 +39,9 @@ flags.DEFINE_float(   'mask_prob', 0.0001, 'corruption rate of the adjacency mat
 
 # Fisher-GCN corresponds to fisher_freq=1 & fisher_adversary=1; other setting of these two parameters are varations
 # in practice, one only needs to tune the fisher_noise parameter
+flags.DEFINE_float(   'fisher_noise', 0.1, 'noise level' )
 flags.DEFINE_integer( 'fisher_rank', 10, 'dimension of the noise' )
 flags.DEFINE_integer( 'fisher_perturbation',  5, 'number of pertubations' ) # the smaller the quicker but worse
-flags.DEFINE_float(   'fisher_noise', 0.01, 'noise level' )
 flags.DEFINE_integer( 'fisher_freq', 1, 'high frequency noise' ) # 0/1/2 for low/high/random frenquency
 flags.DEFINE_integer( 'fisher_adversary', 1, 'adversary noise' ) # 0: plain noise; 1: adversary noise
 
@@ -157,7 +159,19 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
                   time.time(), np.random.randint( 0, int(1e18) ), run )
         os.mkdir( runid )
 
-    sess = tf.Session()
+    config = tf.ConfigProto()
+    config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
+    #config.log_device_placement = True
+    config.gpu_options.allow_growth = True
+
+    if 'COLAB_TPU_ADDR' not in os.environ:
+        tpu_addr = None
+        sess = tf.Session( config=config )
+    else:
+        tpu_addr = 'grpc://' + os.environ['COLAB_TPU_ADDR']
+        sess = tf.Session( tpu_addr, config=config )
+        sess.run( tf.contrib.tpu.initialize_system() )
+
     # Define model evaluation function
     def evaluate( noise, features, support, labels, mask, placeholders ):
         t_test = time.time()
@@ -228,6 +242,9 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
            "accuracy=", "{:.5f}".format(test_acc),
            "time=", "{:.5f}".format(test_duration) )
 
+    if tpu_addr is not None: sess.run( tf.contrib.tpu.shutdown_system() )
+    sess.close()
+
     return history, test_cost, test_acc
 
 def analyse( dataset, result, ofilename ):
@@ -238,7 +255,7 @@ def analyse( dataset, result, ofilename ):
     scores = np.mean( final_result, axis=0 )
     std    = np.std( final_result, axis=0 )
 
-    np.savez( ofilename, lcurves=lcurves, scores=scores, std=std )
+    if FLAGS.save: np.savez( ofilename, lcurves=lcurves, scores=scores, std=std )
 
     print( '{} {} final_train {:.3f} {:.3f}'.format( FLAGS.model, dataset, scores[0], scores[1] ) )
     print( '{} {} final_valid {:.3f} {:.3f}'.format( FLAGS.model, dataset, scores[2], scores[3] ) )
@@ -253,8 +270,8 @@ def main( argv ):
     for _dataset in datasets:
         start_t = time.time()
         result = []
-        if FLAGS.randomsplit == 1:
-            for data_seed in range( FLAGS.seed, FLAGS.seed+10 ):
+        if FLAGS.randomsplit > 0:
+            for data_seed in range( FLAGS.seed, FLAGS.seed+FLAGS.randomsplit ):
                 for i in range( FLAGS.repeat ):
                     result.append( exp( i, _dataset, data_seed=data_seed ) )
         else:

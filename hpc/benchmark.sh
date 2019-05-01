@@ -6,5 +6,5 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
 
-module load tensorflow/1.12.0-py37-gpu
-cd gcn && python benchmark.py $@
+module load tensorflow/1.13.1-py36-gpu
+cd gcn && python3 benchmark.py $@
