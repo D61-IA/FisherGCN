@@ -246,8 +246,26 @@ def load_data( dataset_str, data_seed ):
             ty_extended[test_idx_range-min(test_idx_range), :] = ty
             ty = ty_extended
 
+        elif 'nell.0' in dataset_str:
+            # Find relation nodes, add them as zero-vecs into the right position
+            test_idx_range_full = range(allx.shape[0], len(graph))
+            isolated_node_idx = np.setdiff1d(test_idx_range_full, test_idx_reorder)
+            tx_extended = sp.lil_matrix((len(test_idx_range_full), x.shape[1]))
+            tx_extended[test_idx_range-allx.shape[0], :] = tx
+            tx = tx_extended
+            ty_extended = np.zeros((len(test_idx_range_full), y.shape[1]))
+            ty_extended[test_idx_range-allx.shape[0], :] = ty
+            ty = ty_extended
+
         features = sp.vstack((allx, tx)).tolil()
         features[test_idx_reorder, :] = features[test_idx_range, :]
+
+        if 'nell.0' in dataset_str:
+            features_extended = sp.hstack((features, sp.lil_matrix((features.shape[0], len(isolated_node_idx)))),
+                                          dtype=np.int32).todense()
+            features_extended[isolated_node_idx, features.shape[1]:] = np.eye(len(isolated_node_idx))
+            features = sp.csr_matrix(features_extended)
+
         _nxgraph = nx.from_dict_of_lists( graph )
         adj = nx.adjacency_matrix( _nxgraph )
 
@@ -372,7 +390,7 @@ def chebyshev_polynomials(adj, k):
 
 def preprocess_features(features):
     """Row-normalize feature matrix and convert to tuple representation"""
-    rowsum = np.array(features.sum(1))
+    rowsum = np.array(features.sum(1), dtype=float)
     r_inv = np.power(rowsum, -1).flatten()
     r_inv[np.isinf(r_inv)] = 0.
     r_inv[np.isnan(r_inv)] = 0.
