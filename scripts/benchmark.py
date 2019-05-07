@@ -6,31 +6,32 @@ import sys, itertools, re, time, argparse
 MODELS   = [ 'gcn', 'fishergcn', 'gcnT', 'fishergcnT' ]
 DATAS    = [ 'cora', 'citeseer', 'pubmed', 'amazon_electronics_computers', 'amazon_electronics_photo' ]
 
-LRATES        = [ 0.003, 0.01, 0.03 ]
-LRATES_SUBSET = [ 0.01 ]
-DROPOUTS      = [ 0.5 ]
-REGS          = [ 0.002, 0.001, 0.0005 ]
-REGS_SUBSET   = [ 0.001 ]
-HIDDEN        = [ 16, 32, 64 ]
-HIDDEN_SUBSET = [ 64 ]
-FISHER_NOISE  = [ 0.03, 0.1, 0.3, 1.0 ]
-FISHER_NOISE_SUBSET = [ 0.1 ]
-FISHER_RANK   = [ 10 ]
+LRATE                = [ 0.001, 0.003, 0.01, 0.03 ]
+LRATE_DEFAULT        = [ 0.01 ]
+DROPOUT              = [ 0.5, 0.8 ]
+DROPOUT_DEFAULT      = [ 0.5 ]
+REG                  = [ 0.002, 0.001, 0.0005 ]
+REG_DEFAULT          = [ 0.001 ]
+HIDDEN               = [ 16, 32, 64 ]
+HIDDEN_DEFAULT       = [ 64 ]
+FISHER_NOISE         = [ 0.03, 0.1, 0.3, 1.0 ]
+FISHER_NOISE_DEFAULT = [ 0.1 ]
+FISHER_RANK          = [ 10 ]
 
 def construct_config_arr( data, model ):
     if data in [ 'cora', 'citeseer' ]:
         if 'fisher' in model:
-            _config_arr = itertools.product( LRATES, DROPOUTS, REGS, HIDDEN, FISHER_NOISE, FISHER_RANK )
+            _config_arr = itertools.product( LRATE, DROPOUT, REG, HIDDEN, FISHER_NOISE, FISHER_RANK )
         else:
-            _config_arr = itertools.product( LRATES, DROPOUTS, REGS, HIDDEN )
+            _config_arr = itertools.product( LRATE, DROPOUT, REG, HIDDEN )
 
     else: # use some default parameters for large datasets
         if 'fisher' in model:
-            _config_arr = itertools.product( LRATES_SUBSET, DROPOUTS, REGS_SUBSET, HIDDEN_SUBSET, FISHER_NOISE_SUBSET, FISHER_RANK )
+            _config_arr = itertools.product( LRATE_DEFAULT, DROPOUT_DEFAULT, REG_DEFAULT, HIDDEN_DEFAULT, FISHER_NOISE_DEFAULT, FISHER_RANK )
         else:
-            _config_arr = itertools.product( LRATES_SUBSET, DROPOUTS, REGS_SUBSET, HIDDEN_SUBSET )
+            _config_arr = itertools.product( LRATE_DEFAULT, DROPOUT_DEFAULT, REG_DEFAULT, HIDDEN_DEFAULT )
 
-    return list(_config_arr)
+    return list( _config_arr )
 
 def run_single( ds, model, config, early, epochs, split, repeat, seed, save ):
     pattern_v = re.compile( 'final_valid\s+([\d\.]+)\s+([\d\.]+)' )
@@ -103,7 +104,7 @@ def main():
     parser.add_argument( 'dataset', choices=DATAS+['all'] )
     parser.add_argument( 'model',   choices=MODELS+['all'] )
     parser.add_argument( '--randomsplit', type=int, default=20,   help="#random splits" )
-    parser.add_argument( '--repeat',      type=int, default=5,    help="#repeats" )
+    parser.add_argument( '--repeat',      type=int, default=10,   help="#repeats" )
     parser.add_argument( '--seed',        type=int, default=2019, help="random seed" )
     args = parser.parse_args()
 

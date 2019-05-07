@@ -5,6 +5,7 @@ import networkx as nx
 import scipy.sparse as sp
 from scipy.sparse.linalg.eigen.arpack import eigsh
 import sys
+from pathlib import Path
 from sklearn import model_selection
 from sklearn.preprocessing import MultiLabelBinarizer, LabelBinarizer, normalize
 
@@ -178,7 +179,8 @@ def load_spitfall_datasets(dataset_str,
     if dataset_str != 'amazon_electronics_computers' and dataset_str != 'amazon_electronics_photo':
         raise ValueError('Wrong dataset name!')
 
-    data_path = "data/{}.npz".format(dataset_str)
+    parent_path = Path(__file__).resolve().parents[1]
+    data_path = parent_path.joinpath( "data/{}.npz".format(dataset_str) )
     dataset_graph = load_dataset( data_path )
 
     # some standardization preprocessing
@@ -224,15 +226,20 @@ def load_data( dataset_str, data_seed ):
     else:
         names = ['x', 'y', 'tx', 'ty', 'allx', 'ally', 'graph']
         objects = []
-        for i in range(len(names)):
-            with open("data/ind.{}.{}".format(dataset_str, names[i]), 'rb') as f:
+
+        parent_path = Path(__file__).resolve().parents[1]
+        for i in range( len(names) ):
+            data_path = parent_path.joinpath( "data/ind.{}.{}".format(dataset_str, names[i]) )
+            with open( data_path, 'rb' ) as f:
                 if sys.version_info > (3, 0):
                     objects.append(pkl.load(f, encoding='latin1'))
                 else:
                     objects.append(pkl.load(f))
 
         x, y, tx, ty, allx, ally, graph = tuple(objects)
-        test_idx_reorder = parse_index_file( "data/ind.{}.test.index".format(dataset_str) )
+
+        data_path = parent_path.joinpath( "data/ind.{}.test.index".format(dataset_str) )
+        test_idx_reorder = parse_index_file( data_path )
         test_idx_range = np.sort(test_idx_reorder)
 
         if dataset_str == 'citeseer':

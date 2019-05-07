@@ -1,7 +1,6 @@
-import os
 import numpy as np
 import scipy.sparse as sp
-
+from pathlib import Path
 
 class SparseGraph:
     """Attributed labeled graph stored in sparse matrix form.
@@ -232,10 +231,10 @@ def load_dataset(data_path):
         The requested dataset in sparse format.
 
     """
-    if not data_path.endswith('.npz'):
-        data_path += '.npz'
-    if os.path.isfile(data_path):
-        return load_npz_to_sparse_graph(data_path)
+    if not str(data_path).endswith('.npz'):
+        data_path = data_path.joinpath( '.npz' )
+    if Path.is_file( data_path ):
+        return load_npz_to_sparse_graph( data_path )
     else:
         raise ValueError(f"{data_path} doesn't exist.")
 
