@@ -14,7 +14,7 @@ from block_krylov import block_krylov
 
 from absl import app, flags
 FLAGS = flags.FLAGS
-flags.DEFINE_string(  'dataset', 'cora', 'Dataset string.' )          # 'cora', 'citeseer', 'pubmed', 'amazon_electronics_computers', 'amazon_electronics_photo'
+flags.DEFINE_string(  'dataset', 'cora', 'Dataset string.' ) # 'cora', 'citeseer', 'pubmed', 'amazon_electronics_computers', 'amazon_electronics_photo', 'nell.0.1', 'nell.0.01', 'nell.0.001'
 flags.DEFINE_integer( 'randomsplit', 0, 'random split of train:valid:test' ) # 0/1/2.... random split is recommended for a more complete comparison
 
 flags.DEFINE_string(  'model',   'fishergcn',    'Model string.' )    # 'gcn', 'gcnR', 'gcnT', 'fishergcn', 'fishergcnT', 'gcn_cheby', 'dense'
@@ -252,14 +252,14 @@ def analyse( dataset, result, ofilename ):
     lcurves    = np.array( [ r[0][:min_epochs] for r in result ] )
 
     final_result = np.array( [ r[0][-1]+(r[1], r[2]) for r in result ] )
-    scores = np.mean( final_result, axis=0 )
-    std    = np.std( final_result, axis=0 )
+    _mean = np.mean( final_result, axis=0 )
+    _std  = np.std( final_result, axis=0 )
 
-    if FLAGS.save: np.savez( ofilename, lcurves=lcurves, scores=scores, std=std )
+    if FLAGS.save: np.savez( ofilename, lcurves=lcurves, scores=_mean, std=_std )
 
-    print( '{} {} final_train {:.3f} {:.3f}'.format( FLAGS.model, dataset, scores[0], scores[1] ) )
-    print( '{} {} final_valid {:.3f} {:.3f}'.format( FLAGS.model, dataset, scores[2], scores[3] ) )
-    print( '{} {} final_test  {:.3f} {:.3f}'.format( FLAGS.model, dataset, scores[4], scores[5] ) )
+    print( '{} {} final_train {:.3f} {:.3f}'.format( FLAGS.model, dataset, _mean[0], _mean[1] ) )
+    print( '{} {} final_valid {:.3f} {:.3f}'.format( FLAGS.model, dataset, _mean[2], _mean[3] ) )
+    print( '{} {} final_test  {:.3f} {:.3f} {:.3f} {:.3f}'.format( FLAGS.model, dataset, _mean[4], _mean[5], _std[4], _std[5] ) )
 
 def main( argv ):
     if FLAGS.dataset == 'all':

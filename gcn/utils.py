@@ -179,7 +179,7 @@ def load_spitfall_datasets(dataset_str,
         raise ValueError('Wrong dataset name!')
 
     data_path = "data/{}.npz".format(dataset_str)
-    dataset_graph = load_dataset(data_path)
+    dataset_graph = load_dataset( data_path )
 
     # some standardization preprocessing
     if standardize_graph:
@@ -298,7 +298,11 @@ def load_data( dataset_str, data_seed ):
     y_test[test_mask, :] = labels[test_mask, :]
 
     # output some statistics
-    print( 'nodes', adj.shape[0] )
+    print( '#nodes', adj.shape[0] )
+
+    # nedges = 0
+    # for _n in graph: nedges += len(graph[_n])
+    # print( '#edges (raw) {:.0f}'.format( nedges/2 ) )
 
     rows,cols = adj.nonzero()
     nedges = 0
@@ -312,7 +316,7 @@ def load_data( dataset_str, data_seed ):
             sys.exit(0)
 
         if row != col:  nedges += 1
-    print('nedges', nedges/2)
+    print('#edges (no duplicates; no self-links) {:.0f}'.format( nedges/2 ) )
 
     # check connectivity
     n_connected = nx.number_connected_components( _nxgraph )
