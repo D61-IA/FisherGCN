@@ -1,4 +1,3 @@
-from inits import *
 import tensorflow as tf
 import scipy
 
@@ -102,11 +101,14 @@ class Dense(Layer):
         self.num_features_nonzero = placeholders['num_features_nonzero']
 
         with tf.variable_scope(self.name + '_vars'):
-            self.vars['weights'] = glorot([input_dim, output_dim],
-                                          name='weights')
+            self.vars['weights'] = tf.get_variable(
+                                          name='weights',
+                                          shape=[input_dim, output_dim] )
             if self.bias:
-                self.vars['bias'] = zeros([output_dim], name='bias')
-
+                self.vars['bias'] = tf.get_variable(
+                                        "bias",
+                                        shape=[output_dim],
+                                        initializer=tf.zeros( [output_dim] ) )
         if self.logging:
             self._log_vars()
 
@@ -158,14 +160,21 @@ class GraphConvolution(Layer):
 
         with tf.variable_scope(self.name + '_vars'):
             for i in range(len(self.support)):
-                self.vars['weights_' + str(i)] = glorot( [input_dim, output_dim],
-                                                         name='weights_' + str(i) )
+                self.vars['weights_' + str(i)] = tf.get_variable(
+                                                 'weights_' + str(i),
+                                                 shape=[input_dim, output_dim] )
 
             if self.bias:
-                self.vars['bias'] = zeros([output_dim], name='bias')
+                self.vars['bias'] = tf.get_variable(
+                                        "bias",
+                                        shape=[output_dim],
+                                        initializer=tf.zeros( [output_dim] ) )
 
             if self.diag_tensor:
-                self.vars['diag_tensor'] = zeros(1, name='diag_tensor')
+                self.vars['diag_tensor'] = tf.get_variable(
+                                            "diag_tensor",
+                                            shape=1,
+                                            initializer=tf.zeros( 1 ) )
 
         if self.logging:
             self._log_vars()
