@@ -163,7 +163,7 @@ def load_spitfall_datasets(dataset_str,
                             standardize_graph = True,
                             train_examples_per_class = 20,
                             val_examples_per_class = 30):
-    """Load amazon computers/photo datasets"""
+    """Load amazon computers/photo, ms_academic_cs, and ms_academic_phy datasets"""
     """
     :param dataset_str: Dataset name
            standardize_graph:  Standardizing includes
@@ -176,7 +176,8 @@ def load_spitfall_datasets(dataset_str,
     :return: All data input files loaded (as well the training/test data).
     """
 
-    if dataset_str != 'amazon_electronics_computers' and dataset_str != 'amazon_electronics_photo':
+    spitfall_data = ['amazon_electronics_computers', 'amazon_electronics_photo', 'ms_academic_cs', 'ms_academic_phy']
+    if dataset_str not in spitfall_data:
         raise ValueError('Wrong dataset name!')
 
     parent_path = Path(__file__).resolve().parents[1]
@@ -220,7 +221,7 @@ def load_data( dataset_str, data_seed ):
     :return: All data input files loaded (as well the training/test data).
     """
 
-    if 'amazon_electronics' in dataset_str:
+    if 'amazon_electronics' in dataset_str or 'ms_academic' in dataset_str:
         adj, features, labels, idx_train, idx_val, idx_test = load_spitfall_datasets(dataset_str, data_seed)
         _nxgraph = nx.from_scipy_sparse_matrix( adj )
     else:

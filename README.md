@@ -25,21 +25,29 @@ Notice that the low score of GCN/FisherGCN on amazon_electronics_computer is due
 - Python >=3.6.x
 - Tensorflow >= 1.13
 
-Run
+## Install dependencies
 ```
   pip install -r requirements.txt
 ```
 to install all dependencies.
+
+## Datasets
+
+Our datasets are from following papers:
+  1. [T. Kipf, M. Welling. Semi-Supervised Classification with Graph Convolutional Networks. 2016.](https://arxiv.org/abs/1609.02907) [Dataset](https://github.com/stellargraph/FisherGCN/blob/master/gcn/data)
+  2. [O. Shchur, M. Mumme, A. Bojchevski, S. Günnemann. Pitfalls of Graph Neural Network Evaluation. 2018](https://arxiv.org/abs/1811.05868). [Dataset](https://github.com/shchur/gnn-benchmark/tree/master/data)
+
+Or, you can download our [ZIP data](https://s3-ap-southeast-2.amazonaws.com/stellar-research/fishergcn/data.zip) that includes the two datasets above. After downloading, please run:
+```
+unzip data.zip
+```
+All datasets will be stored in a **data** folder.
 
 ## Run the code
 
 ```bash
 python train.py --model fishergcn
 ```
-
-## Data
-
-Our datasets are from the paper [T. Kipf, M. Welling. Semi-Supervised Classification with Graph Convolutional Networks. 2016.](https://arxiv.org/abs/1609.02907) and [O. Shchur, M. Mumme, A. Bojchevski, S. Günnemann. Pitfalls of Graph Neural Network Evaluation. 2018](https://arxiv.org/abs/1811.05868). You can find those data [here](gcn/data).
 
 ## Disclaimer
 

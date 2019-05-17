@@ -253,11 +253,12 @@ def load_npz_to_sparse_graph(file_name):
         Graph in sparse matrix format.
 
     """
-    with np.load(file_name) as loader:
+
+    with np.load(file_name, allow_pickle=True) as loader:
         loader = dict(loader)
+
         adj_matrix = sp.csr_matrix((loader['adj_data'], loader['adj_indices'], loader['adj_indptr']),
                                    shape=loader['adj_shape'])
-
         if 'attr_data' in loader:
             # Attributes are stored as a sparse CSR matrix
             attr_matrix = sp.csr_matrix((loader['attr_data'], loader['attr_indices'], loader['attr_indptr']),
