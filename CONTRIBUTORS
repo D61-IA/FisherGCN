@@ -1,0 +1,12 @@
+This paper is authored by
+Ke Sun           (Data61)
+Piotr Koniusz    (Data61, ANU)
+Zhen (Jeff) Wang (Data61)
+
+The codes are developed by
+Zhen Wang (baselines and scripts)
+Ke Sun    (random perturbation)
+
+The codes are based on the codes provided by the following papers:
+"T. Kipf, M. Welling. Semi-Supervised Classification with Graph Convolutional Networks. 2016."
+"O. Shchur, M. Mumme, A. Bojchevski, S. Günnemann. Pitfalls of Graph Neural Network Evaluation. 2018."

@@ -16,15 +16,14 @@ def get_layer_uid(layer_name=''):
         _LAYER_UIDS[layer_name] += 1
         return _LAYER_UIDS[layer_name]
 
-
-def sparse_dropout(x, keep_prob, noise_shape):
+def sparse_dropout( x, rate ):
     """Dropout for sparse tensors."""
-    random_tensor = keep_prob
-    random_tensor += tf.random_uniform(noise_shape)
-    dropout_mask = tf.cast(tf.floor(random_tensor), dtype=tf.bool)
-    pre_out = tf.sparse_retain(x, dropout_mask)
-    return pre_out * (1./keep_prob)
 
+    random_tensor = 1-rate
+    random_tensor += tf.random_uniform( tf.shape(x.values) )
+    dropout_mask = tf.cast( tf.floor(random_tensor), dtype=tf.bool )
+    pre_out = tf.sparse_retain(x, dropout_mask)
+    return pre_out * (1./(1-rate))
 
 def dot(x, y, sparse=False):
     """Wrapper for tf.matmul (sparse vs dense)."""
@@ -83,22 +82,16 @@ class Layer(object):
 
 class Dense(Layer):
     """Dense layer."""
-    def __init__(self, input_dim, output_dim, placeholders, dropout=0., sparse_inputs=False,
+    def __init__(self, input_dim, output_dim, dropout=0., sparse_inputs=False,
                  act=tf.nn.relu, bias=False, featureless=False, **kwargs):
         super(Dense, self).__init__(**kwargs)
 
-        if dropout:
-            self.dropout = placeholders['dropout']
-        else:
-            self.dropout = 0.
+        self.dropout = dropout
 
         self.act = act
         self.sparse_inputs = sparse_inputs
         self.featureless = featureless
         self.bias = bias
-
-        # helper variable for sparse dropout
-        self.num_features_nonzero = placeholders['num_features_nonzero']
 
         with tf.variable_scope(self.name + '_vars'):
             self.vars['weights'] = tf.get_variable(
@@ -112,14 +105,17 @@ class Dense(Layer):
         if self.logging:
             self._log_vars()
 
-    def _call(self, inputs):
+    def _call( self, inputs, idx=0 ):
         x = inputs
 
         # dropout
         if self.sparse_inputs:
-            x = sparse_dropout(x, 1-self.dropout, self.num_features_nonzero)
+            x = sparse_dropout( x, self.dropout )
         else:
-            x = tf.nn.dropout(x, rate=self.dropout)
+            try:
+                x = tf.nn.dropout( x, rate=self.dropout )
+            except:
+                x = tf.nn.dropout( x, keep_prob=1-self.dropout )
 
         # transform
         output = dot(x, self.vars['weights'], sparse=self.sparse_inputs)
@@ -134,18 +130,15 @@ class Dense(Layer):
 class GraphConvolution(Layer):
     """Graph convolution layer."""
 
-    def __init__( self, input_dim, input_rows, output_dim, placeholders, dropout=0.,
+    def __init__( self, input_dim, input_rows, output_dim, support, dropout=0.,
                   sparse_inputs=False, act=tf.nn.relu, bias=False,
                   featureless=False, diag_tensor=False, perturbation=None, **kwargs ):
         super(GraphConvolution, self).__init__(**kwargs)
 
-        if dropout:
-            self.dropout = placeholders['dropout']
-        else:
-            self.dropout = 0.
+        self.dropout = dropout
 
         self.act = act
-        self.support = placeholders['support']
+        self.support = support
         self.sparse_inputs = sparse_inputs
         self.featureless = featureless
         self.bias = bias
@@ -154,9 +147,6 @@ class GraphConvolution(Layer):
         self.output_dim = output_dim
         self.input_rows = input_rows
         self.perturbation = perturbation
-
-        # helper variable for sparse dropout
-        self.num_features_nonzero = placeholders['num_features_nonzero']
 
         with tf.variable_scope(self.name + '_vars'):
             for i in range(len(self.support)):
@@ -183,9 +173,12 @@ class GraphConvolution(Layer):
         x = inputs
 
         if self.sparse_inputs:
-            x = sparse_dropout( x, 1-self.dropout, self.num_features_nonzero )
+            x = sparse_dropout( x, self.dropout )
         else:
-            x = tf.nn.dropout( x, rate=self.dropout )
+            try:
+                x = tf.nn.dropout( x, rate=self.dropout )
+            except:
+                x = tf.nn.dropout( x, keep_prob=1-self.dropout )
 
         # convolve
         supports = list()
@@ -204,7 +197,7 @@ class GraphConvolution(Layer):
                 supports.append( ( support ) )
 
             elif self.perturbation is None:
-                if FLAGS.model in ( 'gcn', 'gcnT' ):
+                if FLAGS.model in ( 'gcn', 'gcnT', 'fishergcn', 'fishergcnT' ):
                     support = dot( self.support[i], pre_sup, sparse=True )
                     supports.append( support )
 

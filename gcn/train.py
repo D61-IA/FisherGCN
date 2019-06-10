@@ -14,10 +14,18 @@ from block_krylov import block_krylov
 
 from absl import app, flags
 FLAGS = flags.FLAGS
-flags.DEFINE_string(  'dataset', 'cora', 'Dataset string.' ) # 'cora', 'citeseer', 'pubmed', 'amazon_electronics_computers', 'amazon_electronics_photo', 'nell.0.1', 'nell.0.01', 'nell.0.001'
-flags.DEFINE_integer( 'randomsplit', 0, 'random split of train:valid:test' ) # 0/1/2.... random split is recommended for a more complete comparison
+flags.DEFINE_enum(  'dataset', 'cora',
+                    ['cora','citeseer','pubmed',
+                     'ms_academic_cs',
+                     'ms_academic_phy',
+                     'amazon_electronics_computers',
+                     'amazon_electronics_photo',
+                     'nell.0.1', 'nell.0.01', 'nell.0.001',
+                     ], 'Dataset' )
+flags.DEFINE_enum(  'model', 'fishergcn',
+                   [ 'gcn', 'fishergcn', 'gcnT', 'fishergcnT', 'mlp' ],
+                     'Model' )
 
-flags.DEFINE_string(  'model',   'fishergcn',    'Model string.' )    # 'gcn', 'gcnR', 'gcnT', 'fishergcn', 'fishergcnT', 'gcn_cheby', 'dense'
 flags.DEFINE_float(   'learning_rate', 0.01, 'Initial learning rate.' )
 flags.DEFINE_float(   'dropout', 0.5, 'Dropout rate (1 - keep probability).' )
 flags.DEFINE_integer( 'epochs', 500, 'Number of epochs to train.' )
@@ -25,9 +33,9 @@ flags.DEFINE_integer( 'hidden1', 64, 'Number of units in hidden layer 1.' )
 flags.DEFINE_float(   'weight_decay', 5e-4, 'Weight for L2 loss on embedding matrix.' )
 flags.DEFINE_integer( 'early_stop', 2, 'early_stop strategy' )        # 0: no stop 1: simple early stop 2: more strict conditions
 flags.DEFINE_boolean( 'save', False, 'save npz file which contains the learning results' )
-flags.DEFINE_boolean( 'retrace', False, 'recover the model with the minimum validation loss' )
 flags.DEFINE_integer( 'max_degree', 3, 'Maximum Chebyshev polynomial degree.' )
 flags.DEFINE_integer( 'seed',   2019, 'random seed' )
+flags.DEFINE_integer( 'randomsplit', 0, 'random split of train:valid:test' ) # 0/1/2.... random split is recommended for a more complete comparison
 flags.DEFINE_integer( 'repeat', 20, 'number of repeats' )
 
 # for gcnT
@@ -45,13 +53,41 @@ flags.DEFINE_integer( 'fisher_perturbation',  5, 'number of pertubations' ) # th
 flags.DEFINE_integer( 'fisher_freq', 1, 'high frequency noise' ) # 0/1/2 for low/high/random frenquency
 flags.DEFINE_integer( 'fisher_adversary', 1, 'adversary noise' ) # 0: plain noise; 1: adversary noise
 
+def make_perturbation( V, w, noise_level, adversary ):
+    if adversary > 0:
+        # this is a different noise parametrization
+        #_dirs = tf.get_variable( 'perturbation', shape=(FLAGS.fisher_rank, FLAGS.fisher_rank), dtype=tf.float32 )
+        #_dirs = tf.matmul( _dirs, _dirs, transpose_b=True )
+        #pradius = tf.sigmoid( tf.get_variable( 'perturbation_radius', dtype=tf.float32, shape=() ) )
+        #_dirs =  pradius * _dirs / tf.trace( _dirs )
+        #perturb = tf.matmul( _dirs, tf.random.normal( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), dtype=tf.float32 ) )
+
+        perturb = tf.random.uniform( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), minval=-.5, maxval=.5, dtype=tf.float32 )
+        _scaling = tf.sigmoid( tf.get_variable( 'perturbation_scaling', shape=(FLAGS.fisher_rank, 1), dtype=tf.float32 ) )
+        perturb = _scaling * perturb
+
+    else:
+        perturb = tf.random.uniform( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), minval=-.5, maxval=.5, dtype=tf.float32 )
+
+    ptensor  = tf.constant( w/w.sum(), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
+    metric_w = tf.constant( 1/np.sqrt(w/w.sum()), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
+    new_p = ptensor * tf.exp( noise_level * metric_w * perturb )
+    new_p = new_p / tf.reduce_sum( new_p, axis=0 )
+    inc_w = ( new_p - ptensor ) * w.sum()
+
+    # additive noise
+    #metric_w = tf.constant( np.sqrt(w/w.mean()), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
+    #inc_w = placeholders['noise'] * metric_w * perturb
+
+    return tf.constant( V, dtype=tf.float32, name='FisherV' ), inc_w
+
 def exp( run, dataset, diag_tensor=False, data_seed=None ):
     tf.reset_default_graph()
     np.random.seed( FLAGS.seed + run )
     tf.set_random_seed( FLAGS.seed + run )
 
     adj, subgraphs, features, y_train, y_val, y_test, train_mask, val_mask, test_mask = load_data( dataset, data_seed )
-    features = preprocess_features(features)
+    features = preprocess_features( features )
     perturbation = None
 
     placeholders = {
@@ -59,7 +95,6 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
         'labels': tf.placeholder(tf.float32, shape=(None, y_train.shape[1])),
         'labels_mask': tf.placeholder(tf.int32),
         'dropout': tf.placeholder_with_default(0., shape=()),
-        'num_features_nonzero': tf.placeholder(tf.int32),  # helper variable for sparse dropout
         'noise': tf.placeholder( tf.float32, shape=() ),
     }
 
@@ -104,32 +139,7 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
             print( 'unknown frequency:', FLAGS.fisher_freq )
             sys.exit(0)
 
-        if FLAGS.fisher_adversary > 0:
-            # this is a different noise parametrization
-            #_dirs = tf.get_variable( 'perturbation', shape=(FLAGS.fisher_rank, FLAGS.fisher_rank), dtype=tf.float32 )
-            #_dirs = tf.matmul( _dirs, _dirs, transpose_b=True )
-            #pradius = tf.sigmoid( tf.get_variable( 'perturbation_radius', dtype=tf.float32, shape=() ) )
-            #_dirs =  pradius * _dirs / tf.trace( _dirs )
-            #perturb = tf.matmul( _dirs, tf.random.normal( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), dtype=tf.float32 ) )
-
-            perturb = tf.random.uniform( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), minval=-.5, maxval=.5, dtype=tf.float32 )
-            _scaling = tf.sigmoid( tf.get_variable( 'perturbation_scaling', shape=(FLAGS.fisher_rank, 1), dtype=tf.float32 ) )
-            perturb = _scaling * perturb
-
-        else:
-            perturb = tf.random.uniform( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), minval=-.5, maxval=.5, dtype=tf.float32 )
-
-        ptensor  = tf.constant( w/w.sum(), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
-        metric_w = tf.constant( 1/np.sqrt(w/w.sum()), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
-        new_p = ptensor * tf.exp( placeholders['noise'] * metric_w * perturb )
-        new_p = new_p / tf.reduce_sum( new_p, axis=0 )
-        inc_w = ( new_p - ptensor ) * w.sum()
-
-        # additive noise
-        #metric_w = tf.constant( np.sqrt(w/w.mean()), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
-        #inc_w = placeholders['noise'] * metric_w * perturb
-
-        perturbation = ( tf.constant( V, dtype=tf.float32, name='FisherV' ), inc_w )
+        perturbation = make_perturbation( V, w, placeholders['noise'], FLAGS.fisher_adversary )
         support    = [ sparse_to_tuple( A ) ]
         model_func = GCN
 
@@ -138,26 +148,27 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
         num_supports = 1 + FLAGS.max_degree
         model_func = GCN
 
-    elif FLAGS.model == 'dense':
-        support = [preprocess_adj(adj) + 1]  # Not used
+    elif FLAGS.model == 'mlp':
+        support = [ sparse_to_tuple( preprocess_adj(adj) ) ]
         model_func = MLP
 
     else:
         raise ValueError( 'Invalid argument for model: ' + str(FLAGS.model) )
 
-    _, _values, _shape = support[0]
     print( 'running {} on {} (trial {})'.format( FLAGS.model, dataset, run+1 ) )
-    print( "sparsity: {0:.2f}%".format( 100*(_values>0).sum() / (_shape[0]*_shape[1]) ) )
+    try:
+        _, _values, _shape = support[0]
+        print( "sparsity: {0:.2f}%".format( 100*(_values>0).sum() / (_shape[0]*_shape[1]) ) )
+    except:
+        pass
     placeholders['support'] = [ tf.sparse_placeholder(tf.float32) for _ in support ]
-    model = model_func( placeholders, input_dim=features[2][1], input_rows=features[2][0], diag_tensor=diag_tensor, perturbation=perturbation, logging=True, subgraphs=subgraphs )
-
-    if FLAGS.retrace:
-        saver = tf.train.Saver( max_to_keep=FLAGS.early_stop )
-        runid = '.{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(
-                  dataset, FLAGS.model, FLAGS.learning_rate,
-                  FLAGS.weight_decay, FLAGS.dropout, FLAGS.fisher_noise,
-                  time.time(), np.random.randint( 0, int(1e18) ), run )
-        os.mkdir( runid )
+    model = model_func( placeholders,
+                        input_dim=features[2][1],
+                        input_rows=features[2][0],
+                        diag_tensor=diag_tensor,
+                        perturbation=perturbation,
+                        logging=True,
+                        subgraphs=subgraphs )
 
     config = tf.ConfigProto()
     config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
@@ -182,7 +193,6 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
     sess.run( tf.global_variables_initializer() )
 
     history = []
-    history_files = []
     for epoch in range( FLAGS.epochs ):
         t = time.time()
 
@@ -192,13 +202,8 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
         outs = sess.run( [model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict )
 
         # Validation
-        if FLAGS.retrace:
-            _file = saver.save( sess, '{}/gcn'.format( runid ), global_step=epoch )
-        else:
-            _file = None
         val_cost, val_acc, duration = evaluate( 0.0, features, support, y_val, val_mask, placeholders )
 
-        history_files.append( _file )
         history.append( (outs[1], outs[2], val_cost, val_acc) )
         # tuples in the form ( train_cost, train_acc, val_cost, val_acc )
 
@@ -212,7 +217,9 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
             #print( 'perterbation radius:', sess.run( pradius ) )
 
         if FLAGS.early_stop == 0:
-            pass
+            if epoch > 10 and ( history[-1][0] > 1.5 * history[0][0] or np.isnan(history[-1][0]) ): # training loss is not decreasing
+                print( "Early stopping at epoch {}...".format( epoch ) )
+                break
 
         elif FLAGS.early_stop == 1:    # simple early stopping
             if epoch > 20 and history[-1][2] > np.mean( [r[2] for r in history[-11:-1]] ) \
@@ -229,13 +236,6 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
         else:
             print( 'unknown early stopping strategy:', FLAGS.early_stop )
             sys.exit(0)
-
-    if FLAGS.retrace:
-        history = [ _r for _r in zip(history_files,history) if os.access( _r[0]+".meta", os.R_OK ) ]
-        history.sort( key=lambda r:r[4], reverse=True )
-        sess = tf.Session()
-        saver.restore( sess, history[0][0] )
-        shutil.rmtree( runid )
 
     test_cost, test_acc, test_duration = evaluate( 0.0, features, support, y_test, test_mask, placeholders )
     print( "Test set results:", "cost=", "{:.5f}".format(test_cost),

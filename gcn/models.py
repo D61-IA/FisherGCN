@@ -6,7 +6,7 @@ FLAGS = flags.FLAGS
 
 class Model(object):
     def __init__(self, **kwargs):
-        allowed_kwargs = { 'name', 'logging', 'input_rows', 'diag_tensor' }
+        allowed_kwargs = { 'name', 'logging', 'input_rows', 'diag_tensor', 'perturbation', 'subgraphs' }
         for kwarg in kwargs.keys():
             assert kwarg in allowed_kwargs, 'Invalid keyword argument: ' + kwarg
         name = kwargs.get('name')
@@ -110,17 +110,15 @@ class MLP(Model):
     def _build(self):
         self.layers.append(Dense(input_dim=self.input_dim,
                                  output_dim=FLAGS.hidden1,
-                                 placeholders=self.placeholders,
                                  act=tf.nn.relu,
-                                 dropout=True,
+                                 dropout=self.placeholders['dropout'],
                                  sparse_inputs=True,
                                  logging=self.logging))
 
         self.layers.append(Dense(input_dim=FLAGS.hidden1,
                                  output_dim=self.output_dim,
-                                 placeholders=self.placeholders,
                                  act=lambda x: x,
-                                 dropout=True,
+                                 dropout=self.placeholders['dropout'],
                                  logging=self.logging))
 
     def predict(self):
@@ -128,7 +126,7 @@ class MLP(Model):
 
 
 class GCN( Model ):
-    def __init__(self, placeholders, input_dim, input_rows, diag_tensor=False, perturbation=None, subgraphs=None, **kwargs):
+    def __init__( self, placeholders, input_dim, input_rows, diag_tensor=False, perturbation=None, subgraphs=None, **kwargs ):
         super(GCN, self).__init__(**kwargs)
 
         self.inputs = placeholders['features']
@@ -231,9 +229,9 @@ class GCN( Model ):
         layer1 = GraphConvolution( input_dim=self.input_dim,
                                    input_rows=self.input_rows,
                                    output_dim=FLAGS.hidden1,
-                                   placeholders=self.placeholders,
+                                   support=self.placeholders['support'],
                                    act=tf.nn.relu,
-                                   dropout=True,
+                                   dropout=self.placeholders['dropout'],
                                    sparse_inputs=True,
                                    diag_tensor=self.diag_tensor,
                                    perturbation=self.perturbation,
@@ -241,11 +239,11 @@ class GCN( Model ):
         layer2 = GraphConvolution( input_dim=FLAGS.hidden1,
                                    input_rows=self.input_rows,
                                    output_dim=self.output_dim,
-                                   placeholders=self.placeholders,
+                                   support=self.placeholders['support'],
                                    act=lambda x: x,
-                                   dropout=True,
+                                   dropout=self.placeholders['dropout'],
                                    diag_tensor=self.diag_tensor,
-                                   perturbation=self.perturbation,
+                                   perturbation=None,
                                    logging=self.logging )
         layer1.subgraphs = layer2.subgraphs = self.subgraphs
         self.layers.append( layer1 )

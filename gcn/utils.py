@@ -374,9 +374,7 @@ def construct_feed_dict( noise, features, support, labels, labels_mask, placehol
     feed_dict.update( {placeholders['labels_mask']: labels_mask} )
     feed_dict.update( {placeholders['features']: features} )
     feed_dict.update( {placeholders['support'][i]: support[i] for i in range(len(support))} )
-    feed_dict.update( {placeholders['num_features_nonzero']: features[1].shape} )
     return feed_dict
-
 
 def chebyshev_polynomials(adj, k):
     """Calculate Chebyshev polynomials up to order k. Return a list of sparse matrices (tuple representation)."""
@@ -408,6 +406,8 @@ def preprocess_features(features):
     r_inv[np.isnan(r_inv)] = 0.
     r_mat_inv = sp.diags(r_inv)
     features = r_mat_inv.dot(features)
+    features.eliminate_zeros()
+
     return sparse_to_tuple( features )
 
 def sym_normalize_adj( adj ):

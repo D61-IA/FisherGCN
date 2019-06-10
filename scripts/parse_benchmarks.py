@@ -3,14 +3,14 @@
 import numpy as np
 import sys, os, re
 
-
 def print_result( result ):
     DATAS    = [ 'cora', 'citeseer', 'pubmed', 'amazon_electronics_computers', 'amazon_electronics_photo' ]
     MODELS   = [ 'gcn', 'fishergcn', 'gcnT', 'fishergcnT' ]
 
     for data in DATAS:
         for model in MODELS:
-            if not (data, model) in result: pass
+            if not (data, model) in result: continue
+            if len(result[(data,model)])==0: continue
 
             r = np.array( result[(data,model)] )
             #print( data, model , r )

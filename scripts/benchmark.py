@@ -12,7 +12,7 @@ DROPOUT              = [ 0.5, 0.8 ]
 DROPOUT_DEFAULT      = [ 0.5 ]
 REG                  = [ 0.002, 0.001, 0.0005 ]
 REG_DEFAULT          = [ 0.001 ]
-HIDDEN               = [ 16, 32, 64 ]
+HIDDEN               = [ 32, 64 ]
 HIDDEN_DEFAULT       = [ 64 ]
 FISHER_NOISE         = [ 0.03, 0.1, 0.3, 1.0 ]
 FISHER_NOISE_DEFAULT = [ 0.1 ]
@@ -49,7 +49,11 @@ def run_single( ds, model, config, early, epochs, split, repeat, seed, save ):
         cmd += ' --fisher_noise {} --fisher_rank {}'.format( fisher_noise, fisher_rank )
     if save: cmd += ' --save'
 
-    out = subprocess.check_output( shlex.split(cmd), stderr=subprocess.STDOUT ).decode( 'utf-8' )
+    try:
+        out = subprocess.check_output( shlex.split(cmd), stderr=subprocess.STDOUT ).decode( 'utf-8' )
+    except subprocess.CalledProcessError as e:
+        print( '[stdout]' )
+        print( e.output )
 
     val_loss,  val_acc  = pattern_v.search( out ).groups()
     test_loss, test_acc, test_loss_std, test_acc_std = pattern_t.search( out ).groups()
@@ -96,7 +100,7 @@ def run_repeated_exp( data, model, randomsplit, repeat, seed ):
     # re-run the best config 5 times using 20 different random splits
     start_t = time.time()
     loss_and_acc = run_single( data, model, best_config, 1, 500, randomsplit, repeat, seed=seed, save=True )
-    print( "best", end=" " )
+    print( "best {}x{}".format( randomsplit, repeat ), end=" " )
     print_result( data, model, best_config, loss_and_acc, start_t )
 
 def main():

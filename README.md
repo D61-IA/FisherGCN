@@ -2,7 +2,7 @@
 
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-This is a reference implementation of the paper [K. Sun, P. Koniusz, Z. Wang. Fisher-Bures Adversary Graph Convolutional Network. 2019](https://arxiv.org/abs/1903.04154)
+This is a reference implementation of the paper [Fisher-Bures Adversary Graph Convolutional Network](https://arxiv.org/abs/1903.04154)
 
 ## Outline
 
@@ -58,11 +58,12 @@ The codes are subject to changes and are not necessarily synchronized with our a
 If you find this work useful and apply it in your work, please cite our paper
 
 ```
-@article{fishergcn,
-  author  = {Ke Sun and Piotr Koniusz and Zhen Wang},
-  title   = {Fisher-Bures Adversary Graph Convolutional Network},
-  journal = {CoRR},
-  volume  = {abs/1903.04154},
-  year    = {2019},
+@inproceedings{fishergcn,
+  author    = {Ke Sun and Piotr Koniusz and Zhen Wang},
+  title     = {Fisher-Bures Adversary Graph Convolutional Network},
+  booktitle = {Uncertainty in Artificial Intelligence},
+  year      = {2019},
+  pages     = {(to appear)},
+  note      = {arXiv:1903.04154 [cs.LG]},
 }
 ```
