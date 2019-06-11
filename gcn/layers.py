@@ -132,7 +132,7 @@ class GraphConvolution(Layer):
 
     def __init__( self, input_dim, input_rows, output_dim, support, dropout=0.,
                   sparse_inputs=False, act=tf.nn.relu, bias=False,
-                  featureless=False, diag_tensor=False, perturbation=None, **kwargs ):
+                  featureless=False, perturbation=None, **kwargs ):
         super(GraphConvolution, self).__init__(**kwargs)
 
         self.dropout = dropout
@@ -142,7 +142,6 @@ class GraphConvolution(Layer):
         self.sparse_inputs = sparse_inputs
         self.featureless = featureless
         self.bias = bias
-        self.diag_tensor = diag_tensor
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.input_rows = input_rows
@@ -159,12 +158,6 @@ class GraphConvolution(Layer):
                                         "bias",
                                         shape=[output_dim],
                                         initializer=tf.zeros( [output_dim] ) )
-
-            if self.diag_tensor:
-                self.vars['diag_tensor'] = tf.get_variable(
-                                            "diag_tensor",
-                                            shape=1,
-                                            initializer=tf.zeros( 1 ) )
 
         if self.logging:
             self._log_vars()
@@ -189,14 +182,7 @@ class GraphConvolution(Layer):
             else:
                 pre_sup = self.vars['weights_' + str(i)]
 
-            if self.diag_tensor:
-                mupls = tf.tile(self.vars['diag_tensor'], tf.constant([self.input_rows]))
-                diagm = tf.matrix_set_diag( tf.eye(self.input_rows), tf.tile(self.vars['diag_tensor'], tf.constant([self.input_rows])) )
-                diag_add = tf.sparse_add( self.support[i], diagm )
-                support = dot( diag_add, pre_sup, sparse=False )
-                supports.append( ( support ) )
-
-            elif self.perturbation is None:
+            if self.perturbation is None:
                 if FLAGS.model in ( 'chebynet', 'gcn', 'gcnT', 'fishergcn', 'fishergcnT' ):
                     support = dot( self.support[i], pre_sup, sparse=True )
                     supports.append( support )

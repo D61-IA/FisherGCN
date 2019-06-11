@@ -6,7 +6,7 @@ FLAGS = flags.FLAGS
 
 class Model(object):
     def __init__(self, **kwargs):
-        allowed_kwargs = { 'name', 'logging', 'input_rows', 'diag_tensor', 'perturbation', 'subgraphs' }
+        allowed_kwargs = { 'name', 'logging', 'input_rows', 'perturbation', 'subgraphs' }
         for kwarg in kwargs.keys():
             assert kwarg in allowed_kwargs, 'Invalid keyword argument: ' + kwarg
         name = kwargs.get('name')
@@ -126,7 +126,7 @@ class MLP(Model):
 
 
 class GCN( Model ):
-    def __init__( self, placeholders, input_dim, input_rows, diag_tensor=False, perturbation=None, subgraphs=None, **kwargs ):
+    def __init__( self, placeholders, input_dim, input_rows, perturbation=None, subgraphs=None, **kwargs ):
         super(GCN, self).__init__(**kwargs)
 
         self.inputs = placeholders['features']
@@ -140,7 +140,6 @@ class GCN( Model ):
 
         self.optimizer = tf.train.AdamOptimizer( learning_rate=FLAGS.learning_rate )
 
-        self.diag_tensor = diag_tensor
         self.build()
 
     def build(self):
@@ -233,7 +232,6 @@ class GCN( Model ):
                                    act=tf.nn.relu,
                                    dropout=self.placeholders['dropout'],
                                    sparse_inputs=True,
-                                   diag_tensor=self.diag_tensor,
                                    perturbation=self.perturbation,
                                    logging=self.logging )
         layer2 = GraphConvolution( input_dim=FLAGS.hidden1,
@@ -242,7 +240,6 @@ class GCN( Model ):
                                    support=self.placeholders['support'],
                                    act=lambda x: x,
                                    dropout=self.placeholders['dropout'],
-                                   diag_tensor=self.diag_tensor,
                                    perturbation=None,
                                    logging=self.logging )
         layer1.subgraphs = layer2.subgraphs = self.subgraphs

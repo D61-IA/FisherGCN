@@ -38,7 +38,7 @@ We use the same datasets as in [1][2][3]. They are stored in the folder [data](d
 ```bash
 # ...install git-lfs...
 git lfs install
-git lfs clone https://github.com/stellargraph/FisherGCN
+git clone https://github.com/stellargraph/FisherGCN
 ```
 
 ## Run the code
@@ -56,12 +56,14 @@ The codes are subject to changes and are not necessarily synchronized with our a
 The following works are highlighted here because our codes and datasets are largely based on them. See our [paper](https://arxiv.org/abs/1903.04154) for the complete list of references.
 
 [1] Z. Yang, W. W. Cohen, R. Salakhutdinov, [Revisiting Semi-Supervised Learning with Graph Embeddings](http://proceedings.mlr.press/v48/yanga16.html), ICML, 2016. [(Dataset)](https://github.com/kimiyoung/planetoid/tree/master/data)
+
 [2] T. Kipf, M. Welling, [Semi-Supervised Classification with Graph Convolutional Networks](https://arxiv.org/abs/1609.02907), ICLR, 2017. [(Dataset)](https://github.com/tkipf/gcn/tree/master/gcn/data)
+
 [3] O. Shchur, M. Mumme, A. Bojchevski, S. Günnemann, [Pitfalls of Graph Neural Network Evaluation](https://arxiv.org/abs/1811.05868), Relational Representation Learning Workshop, NIPS 2018. [Dataset](https://github.com/shchur/gnn-benchmark/tree/master/data)
 
 ## Cite
 
-If you apply this work in your work, please cite our paper
+If you apply FisherGCN in your work, please cite
 
 ```
 @inproceedings{fishergcn,

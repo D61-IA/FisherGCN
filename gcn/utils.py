@@ -1,5 +1,4 @@
 import numpy as np
-import random
 import scipy.sparse as sp
 from scipy.sparse.linalg.eigen.arpack import eigsh
 
@@ -21,15 +20,18 @@ def sparse_to_tuple(sparse_mx):
 
     return sparse_mx
 
-def construct_feed_dict( noise, features, support, labels, labels_mask, placeholders ):
+def construct_feed_dict( features, support, labels, labels_mask, placeholders,
+                         noise, dropout ):
     """Construct feed dictionary."""
 
     feed_dict = dict()
-    feed_dict.update( {placeholders['noise']: noise} )
+    feed_dict.update( {placeholders['features']: features} )
+    feed_dict.update( {placeholders['support'][i]: _sup for i, _sup in enumerate(support) } )
     feed_dict.update( {placeholders['labels']: labels} )
     feed_dict.update( {placeholders['labels_mask']: labels_mask} )
-    feed_dict.update( {placeholders['features']: features} )
-    feed_dict.update( {placeholders['support'][i]: support[i] for i in range(len(support))} )
+
+    feed_dict.update( {placeholders['noise']: noise} )
+    feed_dict.update( {placeholders['dropout']: dropout } )
     return feed_dict
 
 def chebyshev_polynomials(adj, k):

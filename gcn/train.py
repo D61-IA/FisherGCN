@@ -2,13 +2,16 @@
 
 from __future__ import division, absolute_import, print_function
 
-import os, time, shutil
+import os, gc, random, time, itertools
 import tensorflow as tf
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_ENABLE_AUTO_MIXED_PRECISION'] = '1'
 
 import scipy.sparse as sp
-from utils import *
+import numpy as np
+
+from utils import sparse_to_tuple, construct_feed_dict, chebyshev_polynomials, \
+                  preprocess_features, preprocess_adj, preprocess_high_order_adj
 from data_io import load_data, PLANETOID_DATA, PITFALL_DATA
 from models import GCN, MLP
 from block_krylov import block_krylov
@@ -75,21 +78,15 @@ def make_perturbation( V, w, noise_level, adversary ):
 
     return tf.constant( V, dtype=tf.float32, name='FisherV' ), inc_w
 
-def exp( run, dataset, diag_tensor=False, data_seed=None ):
-    tf.reset_default_graph()
-    np.random.seed( FLAGS.seed + run )
-    tf.set_random_seed( FLAGS.seed + run )
-
-    adj, subgraphs, features, y_train, y_val, y_test, train_mask, val_mask, test_mask = load_data( dataset, data_seed )
-    features = preprocess_features( features )
+def build_model( adj, features, y_train, subgraphs ):
     perturbation = None
 
     placeholders = {
         'features': tf.sparse_placeholder( tf.float32, shape=tf.constant(features[2],dtype=tf.int64) ),
         'labels': tf.placeholder(tf.float32, shape=(None, y_train.shape[1])),
         'labels_mask': tf.placeholder(tf.int32),
-        'dropout': tf.placeholder_with_default(0., shape=()),
         'noise': tf.placeholder( tf.float32, shape=() ),
+        'dropout': tf.placeholder_with_default(0., shape=()),
     }
 
     if FLAGS.model == 'gcn':
@@ -139,7 +136,6 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
 
     elif FLAGS.model == 'chebynet':
         support = chebyshev_polynomials(adj, FLAGS.max_degree)
-        num_supports = 1 + FLAGS.max_degree
         model_func = GCN
 
     elif FLAGS.model == 'mlp':
@@ -149,96 +145,103 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
     else:
         raise ValueError( 'Invalid argument for model: ' + str(FLAGS.model) )
 
-    print( 'running {} on {} (trial {})'.format( FLAGS.model, dataset, run+1 ) )
     try:
         _, _values, _shape = support[0]
         print( "sparsity: {0:.2f}%".format( 100*(_values>0).sum() / (_shape[0]*_shape[1]) ) )
     except:
         pass
     placeholders['support'] = [ tf.sparse_placeholder(tf.float32) for _ in support ]
+
     model = model_func( placeholders,
                         input_dim=features[2][1],
                         input_rows=features[2][0],
-                        diag_tensor=diag_tensor,
                         perturbation=perturbation,
                         logging=True,
                         subgraphs=subgraphs )
+    return model, support, placeholders
+
+def exp( dataset, data_seed, init_seed ):
+    '''
+    dataset - name of dataset
+    data_seed - data_seed corresponds to train/dev/test split
+    init_seed - seed for random initialization
+    '''
+    print( 'running {} on {}'.format( FLAGS.model, dataset ) )
+
+    tf.reset_default_graph()
+    adj, subgraphs, features, y_train, y_val, y_test, train_mask, val_mask, test_mask = load_data( dataset, data_seed )
+    features = preprocess_features( features )
 
     config = tf.ConfigProto()
     config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
     #config.log_device_placement = True
     config.gpu_options.allow_growth = True
 
-    if 'COLAB_TPU_ADDR' not in os.environ:
-        tpu_addr = None
-        sess = tf.Session( config=config )
-    else:
-        tpu_addr = 'grpc://' + os.environ['COLAB_TPU_ADDR']
-        sess = tf.Session( tpu_addr, config=config )
-        sess.run( tf.contrib.tpu.initialize_system() )
+    with tf.Graph().as_default():
+        random.seed( init_seed )
+        np.random.seed( init_seed )
+        tf.set_random_seed( init_seed )
 
-    # Define model evaluation function
-    def evaluate( noise, features, support, labels, mask, placeholders ):
-        t_test = time.time()
-        feed_dict_val = construct_feed_dict( noise, features, support, labels, mask, placeholders )
-        outs_val = sess.run( [model.loss, model.accuracy, model.outputs], feed_dict=feed_dict_val )
-        return outs_val[0], outs_val[1], (time.time() - t_test)
+        with tf.Session( config=config ) as sess:
 
-    sess.run( tf.global_variables_initializer() )
+            model, support, placeholders = build_model( adj, features, y_train, subgraphs )
+            sess.run( tf.global_variables_initializer() )
 
-    history = []
-    for epoch in range( FLAGS.epochs ):
-        t = time.time()
+            def evaluate( labels, labels_mask, noise=0., dropout=0. ):
+                feed_dict_val = construct_feed_dict( features, support, labels, labels_mask, placeholders, noise, dropout )
+                outs_val = sess.run( [model.loss, model.accuracy], feed_dict=feed_dict_val )
+                return outs_val[0], outs_val[1]
 
-        feed_dict = construct_feed_dict( FLAGS.fisher_noise, features, support, y_train, train_mask, placeholders )
-        feed_dict.update( {placeholders['dropout']: FLAGS.dropout} )
+            history = []
+            start_t = time.time()
+            for epoch in range( FLAGS.epochs ):
 
-        outs = sess.run( [model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict )
+                feed_dict = construct_feed_dict( features, support, y_train, train_mask, placeholders,
+                                                 FLAGS.fisher_noise, FLAGS.dropout )
+                outs = sess.run( [model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict )
 
-        # Validation
-        val_cost, val_acc, duration = evaluate( 0.0, features, support, y_val, val_mask, placeholders )
+                # Validation
+                val_cost, val_acc = evaluate( y_val, val_mask )
 
-        history.append( (outs[1], outs[2], val_cost, val_acc) )
-        # tuples in the form ( train_cost, train_acc, val_cost, val_acc )
+                history.append( (outs[1], outs[2], val_cost, val_acc) )
+                # tuples in the form ( train_cost, train_acc, val_cost, val_acc )
 
-        if ( epoch + 1 ) % 10 == 0:
-            print("Epoch:", '%04d' % (epoch + 1),
-                  "train_loss=", "{:.5f}".format(outs[1]),
-                  "train_acc=", "{:.5f}".format(outs[2]),
-                  "val_loss=", "{:.5f}".format(val_cost),
-                  "val_acc=", "{:.5f}".format(val_acc),
-                  "time=", "{:.5f}".format(time.time() - t))
-            #print( 'perterbation radius:', sess.run( pradius ) )
+                if ( epoch + 1 ) % 10 == 0:
+                    print("Epoch:", '%04d' % (epoch + 1),
+                          "train_loss=", "{:.5f}".format(outs[1]),
+                          "train_acc=", "{:.5f}".format(outs[2]),
+                          "val_loss=", "{:.5f}".format(val_cost),
+                          "val_acc=", "{:.5f}".format(val_acc) )
+                    #print( 'perterbation radius:', sess.run( pradius ) )
 
-        if FLAGS.early_stop == 0:
-            if epoch > 10 and ( history[-1][0] > 1.5 * history[0][0] or np.isnan(history[-1][0]) ): # training loss is not decreasing
-                print( "Early stopping at epoch {}...".format( epoch ) )
-                break
+                if FLAGS.early_stop == 0:
+                    if epoch > 10 and ( history[-1][0] > 1.5 * history[0][0] or np.isnan(history[-1][0]) ): # training loss is not decreasing
+                        print( "Early stopping at epoch {}...".format( epoch ) )
+                        break
 
-        elif FLAGS.early_stop == 1:    # simple early stopping
-            if epoch > 20 and history[-1][2] > np.mean( [r[2] for r in history[-11:-1]] ) \
-                          and history[-1][3] < np.mean( [r[3] for r in history[-11:-1]] ):
-                print( "Early stopping at epoch {}...".format( epoch ) )
-                break
+                elif FLAGS.early_stop == 1:    # simple early stopping
+                    if epoch > 20 and history[-1][2] > np.mean( [r[2] for r in history[-11:-1]] ) \
+                                  and history[-1][3] < np.mean( [r[3] for r in history[-11:-1]] ):
+                        print( "Early stopping at epoch {}...".format( epoch ) )
+                        break
 
-        elif FLAGS.early_stop == 2:    # more strict conditions
-            if epoch > 100 \
-                and np.mean( [r[2] for r in history[-10:]] ) > np.mean( [r[2] for r in history[-100:]] ) \
-                and np.mean( [r[3] for r in history[-10:]] ) < np.mean( [r[3] for r in history[-100:]] ):
-                    print( "Early stopping at epoch {}...".format( epoch ) )
-                    break
-        else:
-            print( 'unknown early stopping strategy:', FLAGS.early_stop )
-            sys.exit(0)
+                elif FLAGS.early_stop == 2:    # more strict conditions
+                    if epoch > 100 \
+                        and np.mean( [r[2] for r in history[-10:]] ) > np.mean( [r[2] for r in history[-100:]] ) \
+                        and np.mean( [r[3] for r in history[-10:]] ) < np.mean( [r[3] for r in history[-100:]] ):
+                            print( "Early stopping at epoch {}...".format( epoch ) )
+                            break
+                else:
+                    print( 'unknown early stopping strategy:', FLAGS.early_stop )
+                    sys.exit(0)
 
-    test_cost, test_acc, test_duration = evaluate( 0.0, features, support, y_test, test_mask, placeholders )
-    print( "Test set results:", "cost=", "{:.5f}".format(test_cost),
-           "accuracy=", "{:.5f}".format(test_acc),
-           "time=", "{:.5f}".format(test_duration) )
+            test_cost, test_acc = evaluate( y_test, test_mask )
+            sec_per_epoch = ( time.time() - start_t ) / epoch
+            print( "Test set results:", "cost=", "{:.5f}".format(test_cost),
+                   "accuracy=", "{:.5f}".format(test_acc),
+                   "epoch_secs=", "{:.2f}".format(sec_per_epoch) )
 
-    if tpu_addr is not None: sess.run( tf.contrib.tpu.shutdown_system() )
-    sess.close()
-
+    tf.reset_default_graph()
     return history, test_cost, test_acc
 
 def analyse( dataset, result, ofilename ):
@@ -256,21 +259,20 @@ def analyse( dataset, result, ofilename ):
     print( '{} {} final_test  {:.3f} {:.3f} {:.3f} {:.3f}'.format( FLAGS.model, dataset, _mean[4], _mean[5], _std[4], _std[5] ) )
 
 def main( argv ):
-    if FLAGS.dataset == 'all':
-        datasets = [ 'cora', 'citeseer', 'pubmed', 'amazon_electronics_computers', 'amazon_electronics_photo' ]
-    else:
-        datasets = [ FLAGS.dataset ]
-
+    datasets = [ FLAGS.dataset ]
     for _dataset in datasets:
         start_t = time.time()
         result = []
+
         if FLAGS.randomsplit > 0:
-            for data_seed in range( FLAGS.seed, FLAGS.seed+FLAGS.randomsplit ):
-                for i in range( FLAGS.repeat ):
-                    result.append( exp( i, _dataset, data_seed=data_seed ) )
+            data_seeds = range( FLAGS.seed, FLAGS.seed+FLAGS.randomsplit )
         else:
-            for i in range( FLAGS.repeat ):
-                result.append( exp(i, _dataset) )
+            data_seeds = [ None ]
+        init_seeds = range( FLAGS.seed, FLAGS.seed+FLAGS.repeat )
+
+        for _data_seed, _init_seed in itertools.product( data_seeds, init_seeds ):
+            result.append( exp( _dataset, _data_seed, _init_seed ) )
+            gc.collect()
 
         ofilename = "{}_{}_lr{}_drop{}_reg{}_hidden{}_early{}".format(
                     FLAGS.model, _dataset, FLAGS.learning_rate, FLAGS.dropout,
