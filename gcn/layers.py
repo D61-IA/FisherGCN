@@ -197,7 +197,7 @@ class GraphConvolution(Layer):
                 supports.append( ( support ) )
 
             elif self.perturbation is None:
-                if FLAGS.model in ( 'gcn', 'gcnT', 'fishergcn', 'fishergcnT' ):
+                if FLAGS.model in ( 'chebynet', 'gcn', 'gcnT', 'fishergcn', 'fishergcnT' ):
                     support = dot( self.support[i], pre_sup, sparse=True )
                     supports.append( support )
 

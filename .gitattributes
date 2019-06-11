@@ -1,0 +1,9 @@
+data/*.npz filter=lfs diff=lfs merge=lfs -text
+data/*.x filter=lfs diff=lfs merge=lfs -text
+data/*.y filter=lfs diff=lfs merge=lfs -text
+data/*.tx filter=lfs diff=lfs merge=lfs -text
+data/*.ty filter=lfs diff=lfs merge=lfs -text
+data/*.allx filter=lfs diff=lfs merge=lfs -text
+data/*.ally filter=lfs diff=lfs merge=lfs -text
+data/*.index filter=lfs diff=lfs merge=lfs -text
+data/*.graph filter=lfs diff=lfs merge=lfs -text

@@ -9,21 +9,15 @@ os.environ['TF_ENABLE_AUTO_MIXED_PRECISION'] = '1'
 
 import scipy.sparse as sp
 from utils import *
+from data_io import load_data, PLANETOID_DATA, PITFALL_DATA
 from models import GCN, MLP
 from block_krylov import block_krylov
 
 from absl import app, flags
 FLAGS = flags.FLAGS
-flags.DEFINE_enum(  'dataset', 'cora',
-                    ['cora','citeseer','pubmed',
-                     'ms_academic_cs',
-                     'ms_academic_phy',
-                     'amazon_electronics_computers',
-                     'amazon_electronics_photo',
-                     'nell.0.1', 'nell.0.01', 'nell.0.001',
-                     ], 'Dataset' )
+flags.DEFINE_enum(  'dataset', 'cora', PLANETOID_DATA + PITFALL_DATA, 'Dataset' )
 flags.DEFINE_enum(  'model', 'fishergcn',
-                   [ 'gcn', 'fishergcn', 'gcnT', 'fishergcnT', 'mlp' ],
+                   [ 'gcn', 'gcnT', 'gcnR', 'fishergcn', 'fishergcnT', 'mlp', 'chebynet' ],
                      'Model' )
 
 flags.DEFINE_float(   'learning_rate', 0.01, 'Initial learning rate.' )
@@ -143,7 +137,7 @@ def exp( run, dataset, diag_tensor=False, data_seed=None ):
         support    = [ sparse_to_tuple( A ) ]
         model_func = GCN
 
-    elif FLAGS.model == 'gcn_cheby':
+    elif FLAGS.model == 'chebynet':
         support = chebyshev_polynomials(adj, FLAGS.max_degree)
         num_supports = 1 + FLAGS.max_degree
         model_func = GCN

@@ -33,15 +33,13 @@ to install all dependencies.
 
 ## Datasets
 
-Our datasets are from following papers:
-  1. [T. Kipf, M. Welling. Semi-Supervised Classification with Graph Convolutional Networks. 2016.](https://arxiv.org/abs/1609.02907) [Dataset](https://github.com/stellargraph/FisherGCN/blob/master/gcn/data)
-  2. [O. Shchur, M. Mumme, A. Bojchevski, S. Günnemann. Pitfalls of Graph Neural Network Evaluation. 2018](https://arxiv.org/abs/1811.05868). [Dataset](https://github.com/shchur/gnn-benchmark/tree/master/data)
+We use the same datasets as in [1][2][3]. They are stored in the folder [data](data/). Please [install](https://github.com/git-lfs/git-lfs/wiki/Installation) `git-lfs` before closing the repository with the following commands
 
-Or, you can download our [ZIP data](https://s3-ap-southeast-2.amazonaws.com/stellar-research/fishergcn/data.zip) that includes the two datasets above. After downloading, please run:
+```bash
+# ...install git-lfs...
+git lfs install
+git lfs clone https://github.com/stellargraph/FisherGCN
 ```
-unzip data.zip
-```
-All datasets will be stored in a **data** folder.
 
 ## Run the code
 
@@ -53,9 +51,17 @@ python train.py --model fishergcn
 
 The codes are subject to changes and are not necessarily synchronized with our arxiv report.
 
+## References
+
+The following works are highlighted here because our codes and datasets are largely based on them. See our [paper](https://arxiv.org/abs/1903.04154) for the complete list of references.
+
+[1] Z. Yang, W. W. Cohen, R. Salakhutdinov, [Revisiting Semi-Supervised Learning with Graph Embeddings](http://proceedings.mlr.press/v48/yanga16.html), ICML, 2016. [(Dataset)](https://github.com/kimiyoung/planetoid/tree/master/data)
+[2] T. Kipf, M. Welling, [Semi-Supervised Classification with Graph Convolutional Networks](https://arxiv.org/abs/1609.02907), ICLR, 2017. [(Dataset)](https://github.com/tkipf/gcn/tree/master/gcn/data)
+[3] O. Shchur, M. Mumme, A. Bojchevski, S. Günnemann, [Pitfalls of Graph Neural Network Evaluation](https://arxiv.org/abs/1811.05868), Relational Representation Learning Workshop, NIPS 2018. [Dataset](https://github.com/shchur/gnn-benchmark/tree/master/data)
+
 ## Cite
 
-If you find this work useful and apply it in your work, please cite our paper
+If you apply this work in your work, please cite our paper
 
 ```
 @inproceedings{fishergcn,
@@ -65,5 +71,6 @@ If you find this work useful and apply it in your work, please cite our paper
   year      = {2019},
   pages     = {(to appear)},
   note      = {arXiv:1903.04154 [cs.LG]},
+  url       = {https://arxiv.org/abs/1903.04154},
 }
 ```

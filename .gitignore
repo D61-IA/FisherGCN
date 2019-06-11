@@ -2,4 +2,3 @@ __pycache__/
 *.py[cod]
 gcn/__pycache__/
 **/.DS_Store
-data/
