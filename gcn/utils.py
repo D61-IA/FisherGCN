@@ -25,7 +25,8 @@ def construct_feed_dict( features, support, labels, labels_mask, placeholders,
     """Construct feed dictionary."""
 
     feed_dict = dict()
-    feed_dict.update( {placeholders['features']: features} )
+    feed_dict.update( {placeholders['features'].indices: features[0]} )
+    feed_dict.update( {placeholders['features'].values:  features[1]} )
     feed_dict.update( {placeholders['support'][i]: _sup for i, _sup in enumerate(support) } )
     feed_dict.update( {placeholders['labels']: labels} )
     feed_dict.update( {placeholders['labels_mask']: labels_mask} )

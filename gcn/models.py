@@ -1,4 +1,5 @@
-from layers import *
+from tensorflow.keras.layers import Dense, Dropout
+from layers import DenseSparseInput, GraphConvolution
 from metrics import *
 
 from absl import flags
@@ -80,7 +81,7 @@ class Model(object):
         print("Model restored from file: %s" % save_path)
 
 
-class MLP(Model):
+class MLP( Model ):
     def __init__(self, placeholders, input_dim, **kwargs):
         super(MLP, self).__init__(**kwargs)
 
@@ -95,9 +96,11 @@ class MLP(Model):
         self.build()
 
     def _loss(self):
-        # Weight decay loss
-        for var in self.layers[0].vars.values():
-            self.loss += FLAGS.weight_decay * tf.nn.l2_loss(var)
+        for layer in self.layers:
+            try:
+                self.loss += FLAGS.weight_decay * tf.nn.l2_loss( layer.kernel )
+            except AttributeError:
+                pass
 
         # Cross entropy error
         self.loss += masked_softmax_cross_entropy(self.outputs, self.placeholders['labels'],
@@ -107,19 +110,16 @@ class MLP(Model):
         self.accuracy = masked_accuracy(self.outputs, self.placeholders['labels'],
                                         self.placeholders['labels_mask'])
 
-    def _build(self):
-        self.layers.append(Dense(input_dim=self.input_dim,
-                                 output_dim=FLAGS.hidden1,
-                                 act=tf.nn.relu,
-                                 dropout=self.placeholders['dropout'],
-                                 sparse_inputs=True,
-                                 logging=self.logging))
-
-        self.layers.append(Dense(input_dim=FLAGS.hidden1,
-                                 output_dim=self.output_dim,
-                                 act=lambda x: x,
-                                 dropout=self.placeholders['dropout'],
-                                 logging=self.logging))
+    def _build( self ):
+        self.layers.append( DenseSparseInput( FLAGS.hidden1,
+                                              input_dim=self.input_dim,
+                                              use_bias=False,
+                                              dropout=self.placeholders['dropout'],
+                                              activation=tf.nn.relu ) )
+        self.layers.append( Dropout( self.placeholders['dropout'] ) )
+        self.layers.append( Dense( self.output_dim,
+                                   input_dim=FLAGS.hidden1,
+                                   use_bias=False, ) )
 
     def predict(self):
         return tf.nn.softmax(self.outputs)
@@ -193,9 +193,12 @@ class GCN( Model ):
         # weights = tf.trainable_variables() # all vars of your graph
         # self.loss += tf.contrib.layers.apply_regularization( l1_regularizer, weights )
 
-        for var in tf.trainable_variables():
-            if not 'perturbation' in var.name:
-                self.loss += FLAGS.weight_decay * tf.nn.l2_loss(var)
+        for layer in self.layers:
+            try:
+                for _ker in layer.kernel:
+                    self.loss += FLAGS.weight_decay * tf.nn.l2_loss( _ker )
+            except AttributeError:
+                pass
 
         # Cross entropy error
         if self.perturbation is None:
@@ -225,27 +228,25 @@ class GCN( Model ):
                                              self.placeholders['labels_mask'] )
 
     def _build(self):
-        layer1 = GraphConvolution( input_dim=self.input_dim,
-                                   input_rows=self.input_rows,
+        layer1 = GraphConvolution( input_rows=self.input_rows,
+                                   input_dim=self.input_dim,
                                    output_dim=FLAGS.hidden1,
                                    support=self.placeholders['support'],
-                                   act=tf.nn.relu,
+                                   activation=tf.nn.relu,
                                    dropout=self.placeholders['dropout'],
                                    sparse_inputs=True,
-                                   perturbation=self.perturbation,
-                                   logging=self.logging )
-        layer2 = GraphConvolution( input_dim=FLAGS.hidden1,
-                                   input_rows=self.input_rows,
+                                   model=FLAGS.model,
+                                   perturbation=self.perturbation )
+        layer2 = GraphConvolution( input_rows=self.input_rows,
+                                   input_dim=FLAGS.hidden1,
                                    output_dim=self.output_dim,
                                    support=self.placeholders['support'],
-                                   act=lambda x: x,
                                    dropout=self.placeholders['dropout'],
-                                   perturbation=None,
-                                   logging=self.logging )
+                                   model=FLAGS.model,
+                                   perturbation=self.perturbation )
         layer1.subgraphs = layer2.subgraphs = self.subgraphs
         self.layers.append( layer1 )
         self.layers.append( layer2 )
 
     def predict(self):
         return tf.nn.softmax( self.outputs )
-

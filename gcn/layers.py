@@ -1,20 +1,8 @@
 import tensorflow as tf
-import scipy
-
-from absl import flags
-FLAGS = flags.FLAGS
-
-# global unique layer ID dictionary for layer name assignment
-_LAYER_UIDS = {}
-
-def get_layer_uid(layer_name=''):
-    """Helper function, assigns unique layer IDs."""
-    if layer_name not in _LAYER_UIDS:
-        _LAYER_UIDS[layer_name] = 1
-        return 1
-    else:
-        _LAYER_UIDS[layer_name] += 1
-        return _LAYER_UIDS[layer_name]
+from tensorflow.python.keras import initializers
+from tensorflow.python.keras import regularizers
+from tensorflow.python.keras import constraints
+from tensorflow.python.keras.engine.input_spec import InputSpec
 
 def sparse_dropout( x, rate ):
     """Dropout for sparse tensors."""
@@ -25,172 +13,127 @@ def sparse_dropout( x, rate ):
     pre_out = tf.sparse_retain(x, dropout_mask)
     return pre_out * (1./(1-rate))
 
-def dot(x, y, sparse=False):
-    """Wrapper for tf.matmul (sparse vs dense)."""
-    if sparse:
-        res = tf.sparse_tensor_dense_matmul(x, y)
-    else:
-        res = tf.matmul(x, y)
-    return res
-
-
-class Layer(object):
-    """Base layer class. Defines basic API for all layer objects.
-    Implementation inspired by keras (http://keras.io).
-
-    # Properties
-        name: String, defines the variable scope of the layer.
-        logging: Boolean, switches Tensorflow histogram logging on/off
-
-    # Methods
-        _call(inputs): Defines computation graph of layer
-            (i.e. takes input, returns output)
-        __call__(inputs): Wrapper for _call()
-        _log_vars(): Log all variables
-    """
-
-    def __init__(self, **kwargs):
-        allowed_kwargs = {'name', 'logging'}
-        for kwarg in kwargs.keys():
-            assert kwarg in allowed_kwargs, 'Invalid keyword argument: ' + kwarg
-        name = kwargs.get('name')
-        if not name:
-            layer = self.__class__.__name__.lower()
-            name = layer + '_' + str(get_layer_uid(layer))
-        self.name = name
-        self.vars = {}
-        logging = kwargs.get('logging', False)
-        self.logging = logging
-        self.sparse_inputs = False
-
-    def _call( self, inputs, idx=0 ):
-        return inputs
-
-    def __call__( self, inputs, idx=0 ):
-        with tf.name_scope(self.name):
-            if self.logging and not self.sparse_inputs:
-                tf.summary.histogram(self.name + '/inputs', inputs)
-            outputs = self._call( inputs, idx )
-            if self.logging:
-                tf.summary.histogram(self.name + '/outputs', outputs)
-            return outputs
-
-    def _log_vars(self):
-        for var in self.vars:
-            tf.summary.histogram(self.name + '/vars/' + var, self.vars[var])
-
-
-class Dense(Layer):
-    """Dense layer."""
-    def __init__(self, input_dim, output_dim, dropout=0., sparse_inputs=False,
-                 act=tf.nn.relu, bias=False, featureless=False, **kwargs):
-        super(Dense, self).__init__(**kwargs)
-
+class DenseSparseInput( tf.keras.layers.Dense ):
+    def __init__( self, *args, dropout=0., **kwargs ):
+        '''
+        dropout is the dropout rate of the input
+        '''
+        super( DenseSparseInput, self ).__init__( *args, **kwargs )
         self.dropout = dropout
 
-        self.act = act
-        self.sparse_inputs = sparse_inputs
-        self.featureless = featureless
-        self.bias = bias
+    def call( self, inputs ):
+        outputs = sparse_dropout( inputs, self.dropout )
+        outputs = tf.sparse_tensor_dense_matmul( outputs, self.kernel )
+        if self.use_bias:
+            outputs = tf.nn.bias_add( outputs, self.bias )
+        if self.activation is not None:
+            return self.activation( outputs )
+        return outputs
 
-        with tf.variable_scope(self.name + '_vars'):
-            self.vars['weights'] = tf.get_variable(
-                                          name='weights',
-                                          shape=[input_dim, output_dim] )
-            if self.bias:
-                self.vars['bias'] = tf.get_variable(
-                                        "bias",
-                                        shape=[output_dim],
-                                        initializer=tf.zeros( [output_dim] ) )
-        if self.logging:
-            self._log_vars()
+class GraphConvolution( tf.keras.layers.Layer ):
+    """Graph Convolutional Layer."""
 
-    def _call( self, inputs, idx=0 ):
-        x = inputs
+    def __init__( self,
+                  input_rows,
+                  input_dim,
+                  output_dim,
+                  support,        # input_rows x input_rows
+                  activation=None,
+                  use_bias=False,
+                  kernel_initializer='glorot_uniform',
+                  bias_initializer='zeros',
+                  kernel_regularizer=None,
+                  bias_regularizer=None,
+                  kernel_constraint=None,
+                  bias_constraint=None,
+                  dropout=0.,
+                  sparse_inputs=False,
+                  featureless=False,
+                  model='gcn',
+                  perturbation=None,
+                  **kwargs ):
+        super( GraphConvolution, self ).__init__( **kwargs )
 
-        # dropout
-        if self.sparse_inputs:
-            x = sparse_dropout( x, self.dropout )
-        else:
-            try:
-                x = tf.nn.dropout( x, rate=self.dropout )
-            except:
-                x = tf.nn.dropout( x, keep_prob=1-self.dropout )
-
-        # transform
-        output = dot(x, self.vars['weights'], sparse=self.sparse_inputs)
-
-        # bias
-        if self.bias:
-            output += self.vars['bias']
-
-        return self.act(output)
-
-
-class GraphConvolution(Layer):
-    """Graph convolution layer."""
-
-    def __init__( self, input_dim, input_rows, output_dim, support, dropout=0.,
-                  sparse_inputs=False, act=tf.nn.relu, bias=False,
-                  featureless=False, perturbation=None, **kwargs ):
-        super(GraphConvolution, self).__init__(**kwargs)
-
-        self.dropout = dropout
-
-        self.act = act
-        self.support = support
-        self.sparse_inputs = sparse_inputs
-        self.featureless = featureless
-        self.bias = bias
-        self.input_dim = input_dim
-        self.output_dim = output_dim
         self.input_rows = input_rows
-        self.perturbation = perturbation
+        self.input_dim  = input_dim
+        self.output_dim = output_dim
+        self.support    = support
 
-        with tf.variable_scope(self.name + '_vars'):
-            for i in range(len(self.support)):
-                self.vars['weights_' + str(i)] = tf.get_variable(
-                                                 'weights_' + str(i),
-                                                 shape=[input_dim, output_dim] )
+        self.activation = activation
+        self.use_bias   = use_bias
 
-            if self.bias:
-                self.vars['bias'] = tf.get_variable(
-                                        "bias",
-                                        shape=[output_dim],
-                                        initializer=tf.zeros( [output_dim] ) )
+        self.kernel_initializer = initializers.get(kernel_initializer)
+        self.bias_initializer   = initializers.get(bias_initializer)
+        self.kernel_regularizer = regularizers.get(kernel_regularizer)
+        self.bias_regularizer   = regularizers.get(bias_regularizer)
+        self.kernel_constraint  = constraints.get(kernel_constraint)
+        self.bias_constraint    = constraints.get(bias_constraint)
 
-        if self.logging:
-            self._log_vars()
+        self.dropout       = dropout
+        self.sparse_inputs = sparse_inputs
+        self.featureless   = featureless
+        self.model         = model
+        self.perturbation  = perturbation
 
-    def _call( self, inputs, idx=0 ):
-        x = inputs
+        self.supports_masking = True
+        self.input_spec = InputSpec( min_ndim=2 )
+
+    def build( self, input_shape ):
+        self.input_spec = InputSpec( min_ndim=2, axes={ -1: self.input_dim } )
+
+        self.kernel = []
+        for i in range( len(self.support) ):
+            self.kernel.append( self.add_weight(
+                      'kernel{}'.format(i),
+                       shape=[self.input_dim, self.output_dim],
+                       initializer=self.kernel_initializer,
+                       regularizer=self.kernel_regularizer,
+                       constraint=self.kernel_constraint,
+                       dtype=self.dtype,
+                       trainable=True ) )
+        if self.use_bias:
+            self.bias = self.add_weight(
+                        'bias',
+                        shape=[ self.output_dim, ],
+                        initializer=self.bias_initializer,
+                        regularizer=self.bias_regularizer,
+                        constraint=self.bias_constraint,
+                        dtype=self.dtype,
+                        trainable=True )
+        else:
+            self.bias = None
+        self.built = True
+
+    def call( self, x, idx=0 ):
 
         if self.sparse_inputs:
             x = sparse_dropout( x, self.dropout )
         else:
             try:
                 x = tf.nn.dropout( x, rate=self.dropout )
-            except:
+            except TypeError:
+                # old interface
                 x = tf.nn.dropout( x, keep_prob=1-self.dropout )
 
-        # convolve
         supports = list()
-        for i in range( len(self.support) ):
-            if not self.featureless:
-                pre_sup = dot( x, self.vars['weights_' + str(i)],
-                               sparse=self.sparse_inputs )
+        for _ker, _sup in zip( self.kernel, self.support ):
+            if self.featureless:
+                pre_sup = _ker
+            elif self.sparse_inputs:
+                pre_sup = tf.sparse_tensor_dense_matmul( x, _ker )
             else:
-                pre_sup = self.vars['weights_' + str(i)]
+                pre_sup = tf.matmul( x, _ker )
 
             if self.perturbation is None:
-                if FLAGS.model in ( 'chebynet', 'gcn', 'gcnT', 'fishergcn', 'fishergcnT' ):
-                    support = dot( self.support[i], pre_sup, sparse=True )
+                if self.model in ( 'chebynet', 'gcn', 'gcnT', 'fishergcn', 'fishergcnT' ):
+                    support = tf.sparse_tensor_dense_matmul( _sup, pre_sup )
                     supports.append( support )
 
-                elif FLAGS.model == 'gcnR':
+                elif self.model.startswith( 'gcnR' ):
+                    mask_prob = float( self.model[4:] )
                     N = self.input_rows
-                    indices = tf.random.uniform( [int(N*N*FLAGS.mask_prob),2], 0, N, dtype=tf.int64 )
-                    values  = -tf.ones( (int(N*N*FLAGS.mask_prob),), dtype=tf.float32 )
+                    indices = tf.random.uniform( [int(N*N*mask_prob),2], 0, N, dtype=tf.int64 )
+                    values  = -tf.ones( (int(N*N*mask_prob),), dtype=tf.float32 )
                     cA = tf.math.abs( tf.sparse.add( self.support[i], tf.SparseTensor( indices, values, [N,N] ) ) )
                     cA = tf.sparse.add( cA, tf.sparse.eye( N ) )
                     cA = tf.sparse.add( cA, tf.sparse.transpose(cA) )
@@ -205,13 +148,13 @@ class GraphConvolution(Layer):
                     raise RuntimeError( 'unknown model' )
 
             else:
-                support = dot( self.support[i], pre_sup, sparse=True )
+                support = tf.sparse_tensor_dense_matmul( _sup, pre_sup )
 
-                # make the perturbation
+                # add the correction term corresponding to the perturbation
                 FisherU, inc_sigma = self.perturbation
-                _noise = dot( tf.transpose( FisherU ), pre_sup, sparse=False )
+                _noise = tf.matmul( tf.transpose( FisherU ), pre_sup )
                 _noise *= inc_sigma[:,idx:(idx+1)]
-                support -= dot( FisherU, _noise, sparse=False )
+                support -= tf.matmul( FisherU, _noise )
 
                 supports.append( support )
 
@@ -220,10 +163,11 @@ class GraphConvolution(Layer):
                 # _mean, _var = tf.nn.moments( pre_sup, 0 )
                 # pre_sup -= _mean
                 # pre_sup /= tf.sqrt( _var )
-
         output = tf.add_n( supports )
 
-        if self.bias: output += self.vars['bias']
+        if self.use_bias: output += self.bias
 
-        return self.act( output )
+        if self.activation is not None:
+            output = self.activation( output )
 
+        return output

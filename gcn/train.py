@@ -245,6 +245,7 @@ def exp( dataset, data_seed, init_seed ):
     return history, test_cost, test_acc
 
 def analyse( dataset, result, ofilename ):
+    avg_epochs = np.mean( [ len(r[0]) for r in result ] )
     min_epochs = min( [ len(r[0]) for r in result ] )
     lcurves    = np.array( [ r[0][:min_epochs] for r in result ] )
 
@@ -254,6 +255,7 @@ def analyse( dataset, result, ofilename ):
 
     if FLAGS.save: np.savez( ofilename, lcurves=lcurves, scores=_mean, std=_std )
 
+    print( '{} {} final_life {:.0f}'.format( FLAGS.model, dataset, avg_epochs ) )
     print( '{} {} final_train {:.3f} {:.3f}'.format( FLAGS.model, dataset, _mean[0], _mean[1] ) )
     print( '{} {} final_valid {:.3f} {:.3f}'.format( FLAGS.model, dataset, _mean[2], _mean[3] ) )
     print( '{} {} final_test  {:.3f} {:.3f} {:.3f} {:.3f}'.format( FLAGS.model, dataset, _mean[4], _mean[5], _std[4], _std[5] ) )
