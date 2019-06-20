@@ -1,5 +1,5 @@
 from tensorflow.keras.layers import Dense, Dropout
-from layers import DenseSparseInput, GraphConvolution
+from layers import DropoutSparse, DenseSparse, GraphConvolution
 from metrics import *
 
 from absl import flags
@@ -39,7 +39,6 @@ class Model(object):
         with tf.variable_scope(self.name):
             self._build()
 
-        # Build sequential layer model
         _activations = [ self.inputs ]
         for layer in self.layers:
             hidden = layer( _activations[-1] )
@@ -80,19 +79,17 @@ class Model(object):
         saver.restore(sess, save_path)
         print("Model restored from file: %s" % save_path)
 
-
 class MLP( Model ):
-    def __init__(self, placeholders, input_dim, **kwargs):
+    def __init__( self, placeholders, **kwargs ):
         super(MLP, self).__init__(**kwargs)
 
         self.inputs = placeholders['features']
-        self.input_dim = input_dim
-        # self.input_dim = self.inputs.get_shape().as_list()[1]  # To be supported in future Tensorflow versions
+        self.input_dim = self.inputs.get_shape().as_list()[1]
+
         self.output_dim = placeholders['labels'].get_shape().as_list()[1]
         self.placeholders = placeholders
 
-        self.optimizer = tf.train.AdamOptimizer( learning_rate=FLAGS.learning_rate )
-
+        self.optimizer = tf.train.AdamOptimizer( learning_rate=FLAGS.lrate )
         self.build()
 
     def _loss(self):
@@ -111,12 +108,12 @@ class MLP( Model ):
                                         self.placeholders['labels_mask'])
 
     def _build( self ):
-        self.layers.append( DenseSparseInput( FLAGS.hidden1,
-                                              input_dim=self.input_dim,
-                                              use_bias=False,
-                                              dropout=self.placeholders['dropout'],
-                                              activation=tf.nn.relu ) )
-        self.layers.append( Dropout( self.placeholders['dropout'] ) )
+        self.layers.append( DropoutSparse( FLAGS.dropout ) )
+        self.layers.append( DenseSparse( FLAGS.hidden1,
+                                         input_dim=self.input_dim,
+                                         use_bias=False,
+                                         activation=tf.nn.relu ) )
+        self.layers.append( Dropout( FLAGS.dropout ) )
         self.layers.append( Dense( self.output_dim,
                                    input_dim=FLAGS.hidden1,
                                    use_bias=False, ) )
@@ -124,21 +121,18 @@ class MLP( Model ):
     def predict(self):
         return tf.nn.softmax(self.outputs)
 
-
 class GCN( Model ):
-    def __init__( self, placeholders, input_dim, input_rows, perturbation=None, subgraphs=None, **kwargs ):
+    def __init__( self, placeholders, perturbation=None, subgraphs=None, **kwargs ):
         super(GCN, self).__init__(**kwargs)
 
         self.inputs = placeholders['features']
-        #self.input_rows, self.input_dim = self.inputs.get_shape().as_list()
-        self.input_dim  = input_dim
-        self.input_rows = input_rows
+        self.input_rows, self.input_dim = self.inputs.get_shape().as_list()
         self.output_dim = placeholders['labels'].get_shape().as_list()[1]
         self.placeholders = placeholders
         self.perturbation = perturbation
         self.subgraphs = subgraphs
 
-        self.optimizer = tf.train.AdamOptimizer( learning_rate=FLAGS.learning_rate )
+        self.optimizer = tf.train.AdamOptimizer( learning_rate=FLAGS.lrate )
 
         self.build()
 
@@ -228,7 +222,7 @@ class GCN( Model ):
                                              self.placeholders['labels_mask'] )
 
     def _build(self):
-        layer1 = GraphConvolution( input_rows=self.input_rows,
+        self.layers.append( GraphConvolution( input_rows=self.input_rows,
                                    input_dim=self.input_dim,
                                    output_dim=FLAGS.hidden1,
                                    support=self.placeholders['support'],
@@ -236,17 +230,14 @@ class GCN( Model ):
                                    dropout=self.placeholders['dropout'],
                                    sparse_inputs=True,
                                    model=FLAGS.model,
-                                   perturbation=self.perturbation )
-        layer2 = GraphConvolution( input_rows=self.input_rows,
+                                   perturbation=self.perturbation ) )
+        self.layers.append( GraphConvolution( input_rows=self.input_rows,
                                    input_dim=FLAGS.hidden1,
                                    output_dim=self.output_dim,
                                    support=self.placeholders['support'],
                                    dropout=self.placeholders['dropout'],
                                    model=FLAGS.model,
-                                   perturbation=self.perturbation )
-        layer1.subgraphs = layer2.subgraphs = self.subgraphs
-        self.layers.append( layer1 )
-        self.layers.append( layer2 )
+                                   perturbation=self.perturbation ) )
 
     def predict(self):
         return tf.nn.softmax( self.outputs )

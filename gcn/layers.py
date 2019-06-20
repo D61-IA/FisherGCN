@@ -1,29 +1,36 @@
 import tensorflow as tf
+from tensorflow.python.keras.utils.tf_utils import smart_cond
+from tensorflow.python.keras.backend import learning_phase
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras.engine.input_spec import InputSpec
 
-def sparse_dropout( x, rate ):
-    """Dropout for sparse tensors."""
+class DropoutSparse( tf.keras.layers.Dropout ):
+    '''
+    Dropout for sparse tensors.
+    '''
 
-    random_tensor = 1-rate
-    random_tensor += tf.random_uniform( tf.shape(x.values) )
-    dropout_mask = tf.cast( tf.floor(random_tensor), dtype=tf.bool )
-    pre_out = tf.sparse_retain(x, dropout_mask)
-    return pre_out * (1./(1-rate))
+    def call( self, inputs, training=None ):
+        if training is None:
+            training = learning_phase()
 
-class DenseSparseInput( tf.keras.layers.Dense ):
-    def __init__( self, *args, dropout=0., **kwargs ):
-        '''
-        dropout is the dropout rate of the input
-        '''
-        super( DenseSparseInput, self ).__init__( *args, **kwargs )
-        self.dropout = dropout
+        def _dropout():
+            mask = 1-self.rate
+            mask += tf.random_uniform( tf.shape(inputs.values), seed=self.seed )
+            mask = tf.floor( mask )
+            return mask * inputs.values / (1-self.rate)
 
+        return tf.SparseTensor( inputs.indices,
+                                smart_cond( training, _dropout, lambda:inputs.values ),
+                                dense_shape=inputs.dense_shape )
+
+class DenseSparse( tf.keras.layers.Dense ):
+    '''
+    Dense layer with SparseTensor input
+    '''
     def call( self, inputs ):
-        outputs = sparse_dropout( inputs, self.dropout )
-        outputs = tf.sparse_tensor_dense_matmul( outputs, self.kernel )
+        outputs = tf.sparse_tensor_dense_matmul( inputs, self.kernel )
         if self.use_bias:
             outputs = tf.nn.bias_add( outputs, self.bias )
         if self.activation is not None:
@@ -105,15 +112,14 @@ class GraphConvolution( tf.keras.layers.Layer ):
         self.built = True
 
     def call( self, x, idx=0 ):
-
         if self.sparse_inputs:
-            x = sparse_dropout( x, self.dropout )
+            random_tensor = 1-self.dropout
+            random_tensor += tf.random_uniform( tf.shape(x.values) )
+            dropout_mask = tf.cast( tf.floor(random_tensor), dtype=tf.bool )
+            x = tf.sparse_retain(x, dropout_mask) * (1./(1-self.dropout))
+
         else:
-            try:
-                x = tf.nn.dropout( x, rate=self.dropout )
-            except TypeError:
-                # old interface
-                x = tf.nn.dropout( x, keep_prob=1-self.dropout )
+            x = tf.nn.dropout( x, rate=self.dropout )
 
         supports = list()
         for _ker, _sup in zip( self.kernel, self.support ):

@@ -1,7 +1,9 @@
-absl-py==0.7.1
-numpy==1.16.3
-scipy==1.2.1
-tensorflow==1.13.1
-networkx==2.3
-matplotlib==3.0.3
-scikit-learn==0.20.3
+tensorflow>=1.13.1
+networkx
+numpy
+scipy
+matplotlib
+scikit-learn
+absl-py
+hyperopt
+ray

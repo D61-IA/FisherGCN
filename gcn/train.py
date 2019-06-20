@@ -4,6 +4,9 @@ from __future__ import division, absolute_import, print_function
 
 import os, gc, random, time, itertools
 import tensorflow as tf
+if tf.__version__.startswith('2'):
+    tf.disable_v2_behavior()
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_ENABLE_AUTO_MIXED_PRECISION'] = '1'
 
@@ -23,7 +26,7 @@ flags.DEFINE_enum(  'model', 'fishergcn',
                    [ 'gcn', 'gcnT', 'gcnR', 'fishergcn', 'fishergcnT', 'mlp', 'chebynet' ],
                      'Model' )
 
-flags.DEFINE_float(   'learning_rate', 0.01, 'Initial learning rate.' )
+flags.DEFINE_float(   'lrate', 0.01, 'initial learning rate.' )
 flags.DEFINE_float(   'dropout', 0.5, 'Dropout rate (1 - keep probability).' )
 flags.DEFINE_integer( 'epochs', 500, 'Number of epochs to train.' )
 flags.DEFINE_integer( 'hidden1', 64, 'Number of units in hidden layer 1.' )
@@ -78,12 +81,11 @@ def make_perturbation( V, w, noise_level, adversary ):
 
     return tf.constant( V, dtype=tf.float32, name='FisherV' ), inc_w
 
-def build_model( adj, features, y_train, subgraphs ):
+def build_model( adj, features, n_classes, subgraphs ):
     perturbation = None
-
     placeholders = {
         'features': tf.sparse_placeholder( tf.float32, shape=tf.constant(features[2],dtype=tf.int64) ),
-        'labels': tf.placeholder(tf.float32, shape=(None, y_train.shape[1])),
+        'labels': tf.placeholder(tf.float32, shape=(None, n_classes)),
         'labels_mask': tf.placeholder(tf.int32),
         'noise': tf.placeholder( tf.float32, shape=() ),
         'dropout': tf.placeholder_with_default(0., shape=()),
@@ -153,10 +155,7 @@ def build_model( adj, features, y_train, subgraphs ):
     placeholders['support'] = [ tf.sparse_placeholder(tf.float32) for _ in support ]
 
     model = model_func( placeholders,
-                        input_dim=features[2][1],
-                        input_rows=features[2][0],
                         perturbation=perturbation,
-                        logging=True,
                         subgraphs=subgraphs )
     return model, support, placeholders
 
@@ -177,6 +176,10 @@ def exp( dataset, data_seed, init_seed ):
     #config.log_device_placement = True
     config.gpu_options.allow_growth = True
 
+    train_loss = []
+    train_acc  = []
+    valid_loss = []
+    valid_acc  = []
     with tf.Graph().as_default():
         random.seed( init_seed )
         np.random.seed( init_seed )
@@ -184,7 +187,7 @@ def exp( dataset, data_seed, init_seed ):
 
         with tf.Session( config=config ) as sess:
 
-            model, support, placeholders = build_model( adj, features, y_train, subgraphs )
+            model, support, placeholders = build_model( adj, features, y_train.shape[1], subgraphs )
             sess.run( tf.global_variables_initializer() )
 
             def evaluate( labels, labels_mask, noise=0., dropout=0. ):
@@ -192,73 +195,99 @@ def exp( dataset, data_seed, init_seed ):
                 outs_val = sess.run( [model.loss, model.accuracy], feed_dict=feed_dict_val )
                 return outs_val[0], outs_val[1]
 
-            history = []
             start_t = time.time()
             for epoch in range( FLAGS.epochs ):
-
                 feed_dict = construct_feed_dict( features, support, y_train, train_mask, placeholders,
                                                  FLAGS.fisher_noise, FLAGS.dropout )
+                feed_dict.update( {tf.keras.backend.learning_phase(): 1} )
                 outs = sess.run( [model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict )
+                train_loss.append( outs[1] )
+                train_acc.append( outs[2] )
 
                 # Validation
-                val_cost, val_acc = evaluate( y_val, val_mask )
-
-                history.append( (outs[1], outs[2], val_cost, val_acc) )
-                # tuples in the form ( train_cost, train_acc, val_cost, val_acc )
+                outs = evaluate( y_val, val_mask )
+                valid_loss.append( outs[0] )
+                valid_acc.append( outs[1] )
 
                 if ( epoch + 1 ) % 10 == 0:
                     print("Epoch:", '%04d' % (epoch + 1),
-                          "train_loss=", "{:.5f}".format(outs[1]),
-                          "train_acc=", "{:.5f}".format(outs[2]),
-                          "val_loss=", "{:.5f}".format(val_cost),
-                          "val_acc=", "{:.5f}".format(val_acc) )
+                          "train_loss=", "{:.5f}".format(train_loss[-1]),
+                          "train_acc=", "{:.5f}".format(train_acc[-1]),
+                          "val_loss=", "{:.5f}".format(valid_loss[-1]),
+                          "val_acc=", "{:.5f}".format(valid_acc[-1]) )
                     #print( 'perterbation radius:', sess.run( pradius ) )
 
                 if FLAGS.early_stop == 0:
-                    if epoch > 10 and ( history[-1][0] > 1.5 * history[0][0] or np.isnan(history[-1][0]) ): # training loss is not decreasing
+                    if epoch > 10 and ( train_loss[-1] > 1.5 * train_loss[0] or np.isnan(train_loss[-1]) ):
                         print( "Early stopping at epoch {}...".format( epoch ) )
                         break
 
                 elif FLAGS.early_stop == 1:    # simple early stopping
-                    if epoch > 20 and history[-1][2] > np.mean( [r[2] for r in history[-11:-1]] ) \
-                                  and history[-1][3] < np.mean( [r[3] for r in history[-11:-1]] ):
+                    if epoch > 20 and valid_loss[-1] > np.mean( valid_loss[-10:] ) \
+                                  and valid_acc[-1] < np.mean( valid_acc[-10:] ):
                         print( "Early stopping at epoch {}...".format( epoch ) )
                         break
 
                 elif FLAGS.early_stop == 2:    # more strict conditions
                     if epoch > 100 \
-                        and np.mean( [r[2] for r in history[-10:]] ) > np.mean( [r[2] for r in history[-100:]] ) \
-                        and np.mean( [r[3] for r in history[-10:]] ) < np.mean( [r[3] for r in history[-100:]] ):
+                        and np.mean( valid_loss[-10:] ) > np.mean( valid_loss[-100:] ) \
+                        and np.mean( valid_acc[-10:] ) < np.mean( valid_acc[-100:] ):
                             print( "Early stopping at epoch {}...".format( epoch ) )
                             break
                 else:
                     print( 'unknown early stopping strategy:', FLAGS.early_stop )
                     sys.exit(0)
 
-            test_cost, test_acc = evaluate( y_test, test_mask )
+            test_loss, test_acc = evaluate( y_test, test_mask )
             sec_per_epoch = ( time.time() - start_t ) / epoch
-            print( "Test set results:", "cost=", "{:.5f}".format(test_cost),
+            print( "Test set results:", "cost=", "{:.5f}".format(test_loss),
                    "accuracy=", "{:.5f}".format(test_acc),
                    "epoch_secs=", "{:.2f}".format(sec_per_epoch) )
 
     tf.reset_default_graph()
-    return history, test_cost, test_acc
+
+    return {
+        'train_loss': train_loss,
+        'train_acc':  train_acc,
+        'valid_loss': valid_loss,
+        'valid_acc':  valid_acc,
+        'test_loss':  test_loss,
+        'test_acc':   test_acc,
+    }
 
 def analyse( dataset, result, ofilename ):
-    avg_epochs = np.mean( [ len(r[0]) for r in result ] )
-    min_epochs = min( [ len(r[0]) for r in result ] )
-    lcurves    = np.array( [ r[0][:min_epochs] for r in result ] )
+    avg_epochs = np.mean( [ len(r['train_loss']) for r in result ] )
+    min_epochs = min(     [ len(r['train_loss']) for r in result ] )
 
-    final_result = np.array( [ r[0][-1]+(r[1], r[2]) for r in result ] )
+    def lcurve( key ):
+        return np.array( [ r[key][:min_epochs] for r in result ] )
+
+    final_result = np.array( [ ( r['train_loss'][-1], r['train_acc'][-1],
+                               r['valid_loss'][-1], r['valid_acc'][-1],
+                               r['test_loss'], r['test_acc'] )
+                               for r in result ] )
     _mean = np.mean( final_result, axis=0 )
     _std  = np.std( final_result, axis=0 )
 
-    if FLAGS.save: np.savez( ofilename, lcurves=lcurves, scores=_mean, std=_std )
+    if FLAGS.save: np.savez( ofilename,
+                             train_loss=lcurve('train_loss'),
+                             train_acc=lcurve('train_acc'),
+                             valid_loss=lcurve('valid_loss'),
+                             valid_acc=lcurve('valid_acc'),
+                             scores=_mean, std=_std )
 
-    print( '{} {} final_life {:.0f}'.format( FLAGS.model, dataset, avg_epochs ) )
-    print( '{} {} final_train {:.3f} {:.3f}'.format( FLAGS.model, dataset, _mean[0], _mean[1] ) )
-    print( '{} {} final_valid {:.3f} {:.3f}'.format( FLAGS.model, dataset, _mean[2], _mean[3] ) )
-    print( '{} {} final_test  {:.3f} {:.3f} {:.3f} {:.3f}'.format( FLAGS.model, dataset, _mean[4], _mean[5], _std[4], _std[5] ) )
+    def _final_print( name, i, j ):
+        print( '{} {} {} {:.2f} {:.2f} {:.2f} {:.2f}'.format(
+               FLAGS.model, dataset, name,
+               np.round( _mean[i], 2 ),
+               np.round( _std[i], 2 ),
+               np.round( _mean[j], 2 ),
+               np.round( _std[j], 2 ) ) )
+
+    print( '{} {} final_life  {:.0f}'.format( FLAGS.model, dataset, avg_epochs ) )
+    _final_print( 'final_train', 0, 1 )
+    _final_print( 'final_valid', 2, 3 )
+    _final_print( 'final_test',  4, 5 )
 
 def main( argv ):
     datasets = [ FLAGS.dataset ]
@@ -277,7 +306,7 @@ def main( argv ):
             gc.collect()
 
         ofilename = "{}_{}_lr{}_drop{}_reg{}_hidden{}_early{}".format(
-                    FLAGS.model, _dataset, FLAGS.learning_rate, FLAGS.dropout,
+                    FLAGS.model, _dataset, FLAGS.lrate, FLAGS.dropout,
                     FLAGS.weight_decay, FLAGS.hidden1, FLAGS.early_stop )
         if 'fisher' in FLAGS.model:
             ofilename += "_rank{}_perturb{}_noise{}_freq{}_adv{}".format(

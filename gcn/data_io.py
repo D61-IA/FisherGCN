@@ -1,5 +1,7 @@
 from sklearn.preprocessing import MultiLabelBinarizer, LabelBinarizer
+from collections import Counter
 from pathlib import Path
+
 import pickle as pkl
 import networkx as nx
 import scipy.sparse as sp
@@ -229,6 +231,18 @@ def eliminate_self_loops( G ):
 
     G.adj_matrix = remove_self_loop( G.adj_matrix )
     return G
+
+def remove_underrepresented_classes( g, train_examples_per_class, val_examples_per_class ):
+    """Remove nodes from graph that correspond to a class of which there are less than
+    num_classes * train_examples_per_class + num_classes * val_examples_per_class nodes.
+    Those classes would otherwise break the training procedure.
+    """
+    min_examples_per_class = train_examples_per_class + val_examples_per_class
+    examples_counter = Counter(g.labels)
+    keep_classes = set(class_ for class_, count in examples_counter.items() if count > min_examples_per_class)
+    keep_indices = [i for i in range(len(g.labels)) if g.labels[i] in keep_classes]
+
+    return create_subgraph( g, nodes_to_keep=keep_indices )
 
 def load_npz_to_sparse_graph( data_path ):
     """Load a SparseGraph from a Numpy binary file.
@@ -496,6 +510,16 @@ def load_pitfall_dataset( dataset_str,
     else:
         dataset_graph = dataset_graph.to_undirected()
         dataset_graph = eliminate_self_loops(dataset_graph)
+
+    if train_examples_per_class is not None and val_examples_per_class is not None:
+        if dataset_str == 'cora_full':
+            # cora_full has some classes that have very few instances. We have to remove these in order for
+            # split generation not to fail
+            dataset_graph = remove_underrepresented_classes( dataset_graph,
+                                                             train_examples_per_class, val_examples_per_class )
+            dataset_graph = dataset_graph.standardize()
+            # To avoid future bugs: the above two lines should be repeated to a fixpoint, otherwise code below might
+            # fail. However, for cora_full the fixpoint is reached after one iteration, so leave it like this for now.
 
     adj, features, labels = dataset_graph.unpack()
     labels = binarize_labels(labels)
