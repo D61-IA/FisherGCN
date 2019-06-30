@@ -10,16 +10,16 @@ Based on information theory, the intrinsic shape of isotropic noise corresponds 
 
 ## Performance
 
-The following table shows the average (20 random splits of train:dev:test data; 10 different random initialisations per split) testing loss/accuracy, based on a GCN model with one hidden layer, using a unified early stopping criterion. One can repeat these results based on [script](hpc/submit_grid.sh) (one has to translate the codes into actual commands without HPC resources). Notice that the scores have a large variation based on the how the train:dev:test datasets is selected (we use the same ratio with the Planetoid split) and one has to be careful when comparing different networks. It is highly recommendeded to run the codes on a GPU.
+The following table shows the average (20 random splits of train:dev:test data; 10 different random initialisations per split) testing loss/accuracy, based on a GCN model with one hidden layer, using a unified early stopping criterion. One can repeat these results based on [script](hpc/submit_grid.sh) (one has to translate the codes into actual commands without HPC resources). Notice that the scores have a large variation based on the how the train:dev:test datasets is selected (we use the same ratio with the Planetoid split) and one has to be careful about this when comparing different networks. It is highly recommendeded to run the codes on a GPU.
 
 | Model | Cora | Citeseer | Pubmed |
-| --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- |
 | GCN |        1.07/80.52 | 1.36/69.59 | 0.75/78.17 |
 | FisherGCN |  1.06/80.70 | 1.35/69.80 | 0.74/78.43 |
 | GCNT |       1.04/81.20 | 1.33/70.31 | 0.70/78.99 |
 | FisherGCNT | 1.03/81.46 | 1.32/70.48 | 0.69/79.34 |
 
-The learning curve on Cora looks like this ![cora](lcurvescora.pdf)
+The learning curves on Cora looks like ![this](lcurvescora.pdf)
 
 ## Requirements
 - Python >=3.6.x
