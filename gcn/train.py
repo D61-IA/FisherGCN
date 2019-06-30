@@ -34,7 +34,8 @@ flags.DEFINE_float(   'weight_decay', 5e-4, 'Weight for L2 loss on embedding mat
 flags.DEFINE_integer( 'early_stop', 2, 'early_stop strategy' )        # 0: no stop 1: simple early stop 2: more strict conditions
 flags.DEFINE_boolean( 'save', False, 'save npz file which contains the learning results' )
 flags.DEFINE_integer( 'max_degree', 3, 'Maximum Chebyshev polynomial degree.' )
-flags.DEFINE_integer( 'seed',   2019, 'random seed' )
+flags.DEFINE_integer( 'init_seed', 2019, 'random seed' )
+flags.DEFINE_integer( 'data_seed', 2019, 'random seed' )
 flags.DEFINE_integer( 'randomsplit', 0, 'random split of train:valid:test' ) # 0/1/2.... random split is recommended for a more complete comparison
 flags.DEFINE_integer( 'repeat', 20, 'number of repeats' )
 
@@ -69,15 +70,25 @@ def make_perturbation( V, w, noise_level, adversary ):
     else:
         perturb = tf.random.uniform( shape=(FLAGS.fisher_rank,FLAGS.fisher_perturbation), minval=-.5, maxval=.5, dtype=tf.float32 )
 
-    ptensor  = tf.constant( w/w.sum(), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
-    metric_w = tf.constant( 1/np.sqrt(w/w.sum()), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
-    new_p = ptensor * tf.exp( noise_level * metric_w * perturb )
-    new_p = new_p / tf.reduce_sum( new_p, axis=0 )
-    inc_w = ( new_p - ptensor ) * w.sum()
+    if FLAGS.fisher_freq != 0:
+        # original density matrix
+        ptensor  = tf.constant( w/w.sum(), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
 
-    # additive noise
-    #metric_w = tf.constant( np.sqrt(w/w.mean()), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
-    #inc_w = placeholders['noise'] * metric_w * perturb
+        # Fisher-Bures metric
+        metric_w = tf.constant( 1/np.sqrt(w/w.sum()), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
+
+        # perturbed density matrix
+        new_p = ptensor * tf.exp( noise_level * metric_w * perturb )
+        new_p = new_p / tf.reduce_sum( new_p, axis=0 )
+
+        # the perturbation
+        inc_w = ( new_p - ptensor ) * w.sum()
+
+    else:
+        # use additive noise for perturbing eigenvectors wrt small eigenvalues
+        # in this case the metric may be singular or numerical instable
+        #metric_w = tf.constant( np.sqrt(w/w.mean()), dtype=tf.float32, shape=(FLAGS.fisher_rank,1) )
+        inc_w = noise_level * perturb
 
     return tf.constant( V, dtype=tf.float32, name='FisherV' ), inc_w
 
@@ -114,13 +125,24 @@ def build_model( adj, features, n_classes, subgraphs ):
         L = sp.eye( N ) - A
 
         if FLAGS.fisher_freq == 0:
-            nsubgraphs = subgraphs.shape[1]
-            V = block_krylov( A, FLAGS.fisher_rank+nsubgraphs )
-            V = V[:,:FLAGS.fisher_rank]
+            #nsubgraphs = subgraphs.shape[1]
+            #V = block_krylov( A, FLAGS.fisher_rank+nsubgraphs )
+            #V = V[:,:FLAGS.fisher_rank]
+
+            V = block_krylov( A, FLAGS.fisher_rank )
             w = ( sp.csr_matrix.dot( L, V ) * V ).sum(0)
-            #w, V = sp.linalg.eigsh( A, k=FLAGS.fisher_rank+nsubgraphs )
 
         elif FLAGS.fisher_freq == 1:
+            # if the graph contains one large component and small isolated components
+            # only perturb the largest connected component
+            subgraph_sizes = subgraphs.sum( 0 )
+            largest_idx = np.argmax( subgraph_sizes )
+            isolated = np.nonzero( 1-subgraphs[:,largest_idx] )[0]
+            L = L.tolil()
+            L[:,isolated] = 0
+            L[isolated,:] = 0
+            L = L.tocsr()
+
             V = block_krylov( L, FLAGS.fisher_rank )
             w = ( sp.csr_matrix.dot( L, V ) * V ).sum(0)
 
@@ -163,7 +185,7 @@ def exp( dataset, data_seed, init_seed ):
     '''
     dataset - name of dataset
     data_seed - data_seed corresponds to train/dev/test split
-    init_seed - seed for random initialization
+    init_seed - seed for initializing NN weights
     '''
     print( 'running {} on {}'.format( FLAGS.model, dataset ) )
 
@@ -240,7 +262,7 @@ def exp( dataset, data_seed, init_seed ):
 
             test_loss, test_acc = evaluate( y_test, test_mask )
             sec_per_epoch = ( time.time() - start_t ) / epoch
-            print( "Test set results:", "cost=", "{:.5f}".format(test_loss),
+            print( "Test set results:", "loss=", "{:.5f}".format(test_loss),
                    "accuracy=", "{:.5f}".format(test_acc),
                    "epoch_secs=", "{:.2f}".format(sec_per_epoch) )
 
@@ -274,6 +296,8 @@ def analyse( dataset, result, ofilename ):
                              train_acc=lcurve('train_acc'),
                              valid_loss=lcurve('valid_loss'),
                              valid_acc=lcurve('valid_acc'),
+                             test_loss=final_result[:,4],
+                             test_acc=final_result[:,5],
                              scores=_mean, std=_std )
 
     def _final_print( name, i, j ):
@@ -296,18 +320,21 @@ def main( argv ):
         result = []
 
         if FLAGS.randomsplit > 0:
-            data_seeds = range( FLAGS.seed, FLAGS.seed+FLAGS.randomsplit )
+            data_seeds = range( FLAGS.data_seed, FLAGS.data_seed+FLAGS.randomsplit )
         else:
             data_seeds = [ None ]
-        init_seeds = range( FLAGS.seed, FLAGS.seed+FLAGS.repeat )
+        init_seeds = range( FLAGS.init_seed, FLAGS.init_seed+FLAGS.repeat )
 
         for _data_seed, _init_seed in itertools.product( data_seeds, init_seeds ):
             result.append( exp( _dataset, _data_seed, _init_seed ) )
             gc.collect()
 
-        ofilename = "{}_{}_lr{}_drop{}_reg{}_hidden{}_early{}".format(
+        ofilename = "{}_{}_lr{}_drop{}_reg{}_hidden{}_early{}_seed{}_{}_repeat{}_{}".format(
                     FLAGS.model, _dataset, FLAGS.lrate, FLAGS.dropout,
-                    FLAGS.weight_decay, FLAGS.hidden1, FLAGS.early_stop )
+                    FLAGS.weight_decay, FLAGS.hidden1, FLAGS.early_stop,
+                    FLAGS.init_seed, FLAGS.data_seed,
+                    FLAGS.randomsplit, FLAGS.repeat )
+
         if 'fisher' in FLAGS.model:
             ofilename += "_rank{}_perturb{}_noise{}_freq{}_adv{}".format(
                           FLAGS.fisher_rank, FLAGS.fisher_perturbation,

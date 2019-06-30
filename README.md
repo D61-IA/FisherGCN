@@ -2,24 +2,24 @@
 
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-This is a reference implementation of the paper [Fisher-Bures Adversary Graph Convolutional Network](https://arxiv.org/abs/1903.04154)
+This is a reference implementation of the paper [Fisher-Bures Adversary Graph Convolutional Networks](https://arxiv.org/abs/1903.04154)
 
 ## Outline
 
-Based on information geometry, the intrinsic shape of isotropic noise corresponds to the largest eigenvectors of the graph Laplacian. Such noise can bring a small but consistent improvement to generalization. In the paper we discussed three different geometries of a graph that is embedded in a neural network, namely intrinsic geometry (how to define graph distance); extrinsic geometry (how perturbation of the graph affect the neural network); embedding geometry (in the space of all network embeddings). We imported new tools from quantum information geometry into the domain of graph neural networks.
+Based on information theory, the intrinsic shape of isotropic noise corresponds to the largest eigenvectors of the graph Laplacian. Such noise can bring a small but consistent improvement to generalization. In this paper, we discussed three different geometries of a graph that is embedded in a neural network, namely intrinsic geometry (how to define graph distance); extrinsic geometry (how perturbation of the graph affect the neural network); embedding geometry (how to measure graph embeddings). We imported new analytical tools from quantum information geometry into the domain of graph neural networks.
 
 ## Performance
 
-The following table shows the average (20 random splits of train:dev:test data; 10 different random initialisations for each split) testing loss/accuracy, based on a GCN model with one hidden layer, using a unified early stopping criterion. One may refer to [benchmark.py](scripts/benchmark.py) for the exact evaluation protocols and hyperparameter settings.
+The following table shows the average (20 random splits of train:dev:test data; 10 different random initialisations per split) testing loss/accuracy, based on a GCN model with one hidden layer, using a unified early stopping criterion. One can repeat these results based on [script](hpc/submit_grid.sh) (one has to translate the codes into actual commands without HPC resources). Notice that the scores have a large variation based on the how the train:dev:test datasets is selected (we use the same ratio with the Planetoid split) and one has to be careful when comparing different networks. It is highly recommendeded to run the codes on a GPU.
 
-| Model | Cora | Citeseer | Pubmed | amazon_electronics_computers | amazon_electronics_photo |
+| Model | Cora | Citeseer | Pubmed |
 | --- | --- | --- | --- | --- | --- |
-| GCN |        1.103/80.21 | 1.394/69.42 | 0.836/78.33 | 2.357/37.75 | 1.998/71.03 |
-| FisherGCN |  1.084/80.48 | 1.593/69.61 | 0.826/78.47 | 2.354/40.73 | 1.992/72.34 |
-| GCNT |       1.076/80.96 | 1.359/70.28 | 0.793/79.02 | 2.269/68.48 | 1.938/79.4  |
-| FisherGCNT | 1.045/81.21 | 1.563/70.47 | 0.782/79.12 | 2.262/70.4  | 1.928/81.12 |
+| GCN |        1.07/80.52 | 1.36/69.59 | 0.75/78.17 |
+| FisherGCN |  1.06/80.70 | 1.35/69.80 | 0.74/78.43 |
+| GCNT |       1.04/81.20 | 1.33/70.31 | 0.70/78.99 |
+| FisherGCNT | 1.03/81.46 | 1.32/70.48 | 0.69/79.34 |
 
-Notice that the low score of GCN/FisherGCN on amazon_electronics_computer is due to failed runs (stopping too early).
+The learning curve on Cora looks like this ![cora](lcurvescora.pdf)
 
 ## Requirements
 - Python >=3.6.x
@@ -46,20 +46,17 @@ git clone https://github.com/stellargraph/FisherGCN
 ```bash
 python train.py --model fishergcn
 ```
-
-## Disclaimer
-
-The codes are subject to changes and are not necessarily synchronized with our arxiv report.
+Check [train.py](gcn/train.py) on the parameter configurations.
 
 ## References
 
 The following works are highlighted here because our codes and datasets are largely based on them. See our [paper](https://arxiv.org/abs/1903.04154) for the complete list of references.
 
-[1] Z. Yang, W. W. Cohen, R. Salakhutdinov, [Revisiting Semi-Supervised Learning with Graph Embeddings](http://proceedings.mlr.press/v48/yanga16.html), ICML, 2016. [(Dataset)](https://github.com/kimiyoung/planetoid/tree/master/data)
+[1] Z. Yang, W. W. Cohen, R. Salakhutdinov, [Revisiting Semi-Supervised Learning with Graph Embeddings](http://proceedings.mlr.press/v48/yanga16.html), ICML, 2016.
 
-[2] T. Kipf, M. Welling, [Semi-Supervised Classification with Graph Convolutional Networks](https://arxiv.org/abs/1609.02907), ICLR, 2017. [(Dataset)](https://github.com/tkipf/gcn/tree/master/gcn/data)
+[2] T. Kipf, M. Welling, [Semi-Supervised Classification with Graph Convolutional Networks](https://arxiv.org/abs/1609.02907), ICLR, 2017.
 
-[3] O. Shchur, M. Mumme, A. Bojchevski, S. Günnemann, [Pitfalls of Graph Neural Network Evaluation](https://arxiv.org/abs/1811.05868), Relational Representation Learning Workshop, NIPS 2018. [Dataset](https://github.com/shchur/gnn-benchmark/tree/master/data)
+[3] O. Shchur, M. Mumme, A. Bojchevski, S. Günnemann, [Pitfalls of Graph Neural Network Evaluation](https://arxiv.org/abs/1811.05868), Relational Representation Learning Workshop, NIPS 2018.
 
 ## Cite
 
@@ -68,7 +65,7 @@ If you apply FisherGCN in your work, please cite
 ```
 @inproceedings{fishergcn,
   author    = {Ke Sun and Piotr Koniusz and Zhen Wang},
-  title     = {Fisher-Bures Adversary Graph Convolutional Network},
+  title     = {Fisher-Bures Adversary Graph Convolutional Networks},
   booktitle = {Uncertainty in Artificial Intelligence},
   year      = {2019},
   pages     = {(to appear)},

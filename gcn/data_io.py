@@ -1,4 +1,3 @@
-from sklearn.preprocessing import MultiLabelBinarizer, LabelBinarizer
 from collections import Counter
 from pathlib import Path
 
@@ -393,6 +392,8 @@ def binarize_labels(labels, sparse_output=False, return_classes=False):
         Classes that correspond to each column of the label_matrix.
 
     """
+
+    from sklearn.preprocessing import MultiLabelBinarizer, LabelBinarizer
     if hasattr(labels[0], '__iter__'):  # labels[0] is iterable <=> multilabel format
         binarizer = MultiLabelBinarizer(sparse_output=sparse_output)
     else:
@@ -683,9 +684,11 @@ def load_data( dataset_str, data_seed ):
     #largest_cc = max( nx.connected_component_subgraphs( _nxgraph ), key=len )
     #print( 'diameter:', nx.diameter( largest_cc ) )
 
-    subgraphs = np.zeros( [adj.shape[0], n_connected] )
+    subgraphs = np.zeros( [adj.shape[0], n_connected], dtype=np.int )
     for i, idx in enumerate( nx.connected_components( _nxgraph ) ):
         subgraphs[list(idx),i] = 1
+    subgraph_sizes = sorted( subgraphs.sum( 0 ), reverse=True )
+    print( 'component size:', subgraph_sizes[:5], '...' )
 
     #import matplotlib.pyplot as plt
     #plt.hist( subgraphs.sum(0) ); plt.show()

@@ -39,7 +39,7 @@ def _config_grid( data, model, default_config ):
         _config_arr = itertools.product( _lrate, _dropout, _weight_decay, _hidden )
     return list( _config_arr )
 
-def run_single( ds, model, config, early, epochs, split, repeat, seed, save ):
+def run_single( ds, model, config, early, epochs, split, repeat, data_seed, init_seed, save ):
     pattern_v = re.compile( 'final_valid\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)' )
     pattern_t = re.compile(  'final_test\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)' )
 
@@ -52,8 +52,9 @@ def run_single( ds, model, config, early, epochs, split, repeat, seed, save ):
 
     cmd = 'python {} --dataset {} --model {} --lrate {} --dropout {}' \
           ' --weight_decay {} --hidden1 {} --early_stop {} --epochs {}' \
-          ' --randomsplit {} --repeat {} --seed {}'.format(
-          cmd_path, ds, model, lr, dropout, reg, hidden, early, epochs, split, repeat, seed )
+          ' --randomsplit {} --repeat {} --data_seed {} --init_seed {}'.format(
+          cmd_path, ds, model, lr, dropout, reg, hidden, early, epochs,
+          split, repeat, data_seed, init_seed )
     if 'fisher' in model:
         cmd += ' --fisher_noise {} --fisher_rank {}'.format( fisher_noise, fisher_rank )
     if save: cmd += ' --save'
@@ -82,7 +83,7 @@ def print_result( data, model, config, loss_and_acc, start_t ):
 
     sys.stdout.flush()
 
-def run_repeated_exp( data, model, default_config, epochs, early, randomsplit, repeat, seed ):
+def run_repeated_exp( data, model, default_config, epochs, early, randomsplit, repeat, data_seed, init_seed ):
     config_arr = _config_grid( data, model, default_config )
     if len( config_arr ) <= 1:
         best_config = config_arr[0]
@@ -103,7 +104,7 @@ def run_repeated_exp( data, model, default_config, epochs, early, randomsplit, r
         results = []
         for config in config_arr:
             _tick = time.time()
-            loss_and_acc = run_single( data, model, config, 0, LIGHT_EPOCHS, LIGHT_NUM_SPLITS, LIGHT_REPEAT, seed=seed, save=False )
+            loss_and_acc = run_single( data, model, config, 0, LIGHT_EPOCHS, LIGHT_NUM_SPLITS, LIGHT_REPEAT, data_seed=data_seed, init_seed=init_seed, save=False )
             gc.collect()
 
             results.append( ( loss_and_acc[4], config ) )
@@ -114,7 +115,7 @@ def run_repeated_exp( data, model, default_config, epochs, early, randomsplit, r
 
     # re-run the best config
     start_t = time.time()
-    loss_and_acc = run_single( data, model, best_config, early, epochs, randomsplit, repeat, seed=seed, save=True )
+    loss_and_acc = run_single( data, model, best_config, early, epochs, randomsplit, repeat, data_seed=data_seed, init_seed=init_seed, save=True )
     print( "best {}x{}".format( randomsplit, repeat ), end=" " )
     print_result( data, model, best_config, loss_and_acc, start_t )
 
@@ -124,7 +125,8 @@ def main():
     parser.add_argument( 'model',   choices=MODELS+['all'] )
     parser.add_argument( '--randomsplit',  type=int,   default=30,   help="#random splits" )
     parser.add_argument( '--repeat',       type=int,   default=10,   help="#repeats" )
-    parser.add_argument( '--seed',         type=int,   default=2019, help="random seed" )
+    parser.add_argument( '--data_seed',    type=int,   default=2019, help="random seed for data split" )
+    parser.add_argument( '--init_seed',    type=int,   default=2019, help="random seed for initialization" )
     parser.add_argument( '--epochs',       type=int,   default=500,  help="#epochs" )
     parser.add_argument( '--early_stop',   type=int,   default=2,    help="early stop strategy" )
     parser.add_argument( '--lrate',        type=float, default=None, help='learning rate' )
@@ -147,7 +149,7 @@ def main():
 
     default_config = ( args.lrate, args.dropout, args.weight_decay, args.hidden, args.fisher_noise, args.fisher_rank )
     for data, model in itertools.product( data_arr, model_arr ):
-        run_repeated_exp( data, model, default_config, args.epochs, args.early_stop, args.randomsplit, args.repeat, args.seed )
+        run_repeated_exp( data, model, default_config, args.epochs, args.early_stop, args.randomsplit, args.repeat, args.data_seed, args.init_seed )
 
 if __name__ == '__main__':
     main()
