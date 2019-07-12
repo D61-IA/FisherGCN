@@ -6,6 +6,9 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras.engine.input_spec import InputSpec
 
+from absl import flags
+FLAGS = flags.FLAGS
+
 class DropoutSparse( tf.keras.layers.Dropout ):
     '''
     Dropout for sparse tensors.
@@ -136,17 +139,22 @@ class GraphConvolution( tf.keras.layers.Layer ):
                     supports.append( support )
 
                 elif self.model.startswith( 'gcnR' ):
-                    mask_prob = float( self.model[4:] )
                     N = self.input_rows
-                    indices = tf.random.uniform( [int(N*N*mask_prob),2], 0, N, dtype=tf.int64 )
-                    values  = -tf.ones( (int(N*N*mask_prob),), dtype=tf.float32 )
-                    cA = tf.math.abs( tf.sparse.add( self.support[i], tf.SparseTensor( indices, values, [N,N] ) ) )
+
+                    # i.i.d. Bernouli noise on the adjancency matrix
+                    indices = tf.random.uniform( [int(N*FLAGS.flip_prob),2], 0, N, dtype=tf.int64 )
+                    values  = -tf.ones( (int(N*FLAGS.flip_prob),), dtype=tf.float32 )
+                    cA = tf.math.abs( tf.sparse.add( _sup, tf.SparseTensor( indices, values, [N,N] ) ) )
+
+                    # or, one can only dropout existing edges
+                    #cA = tf.SparseTensor( _sup.indices, tf.nn.dropout(_sup.values, rate=FLAGS.flip_prob), _sup.dense_shape )
+
                     cA = tf.sparse.add( cA, tf.sparse.eye( N ) )
                     cA = tf.sparse.add( cA, tf.sparse.transpose(cA) )
-                    _inv_degree = tf.pow( tf.sparse.reduce_sum( cA, axis=1, keepdims=True ), -0.5 )
+                    _inv_degree = tf.reshape( tf.pow( tf.sparse.reduce_sum( cA, axis=1 ), -0.5 ), [N,1] )
 
                     pre_sup = pre_sup * _inv_degree
-                    support = dot( cA, pre_sup, sparse=True )
+                    support = tf.sparse_tensor_dense_matmul( cA, pre_sup )
                     support = support * _inv_degree
                     supports.append( support )
 

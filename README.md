@@ -10,7 +10,7 @@ Based on information theory, the intrinsic shape of isotropic noise corresponds 
 
 ## Performance
 
-The following table shows the average (20 random splits of train:dev:test data; 10 different random initialisations per split) testing loss/accuracy, based on a GCN model with one hidden layer, using a unified early stopping criterion. One can repeat these results based on [script](hpc/submit_grid.sh) (one has to translate the codes into actual commands without HPC resources). Notice that the scores have a large variation based on the how the train:dev:test datasets is selected (we use the same ratio with the Planetoid split) and one has to be careful about this when comparing different networks. It is highly recommendeded to run the codes on a GPU.
+The following table shows the average (20 random splits of train:dev:test data; 10 different random initialisations per split) testing loss/accuracy, based on a GCN model with one hidden layer, using a unified early stopping criterion. One can repeat these results based on [script](hpc/submit_grid.sh) (one has to translate the script into actual commands without access to HPC resources). Notice that the scores have a large variation based on the how the train:dev:test datasets is selected (we use the same ratio with the Planetoid split [1]) and one has to be careful about this when comparing different GCN implementations. It is highly recommended to run the codes on a GPU.
 
 | Model | Cora | Citeseer | Pubmed |
 | --- | --- | --- | --- |
@@ -22,10 +22,11 @@ The following table shows the average (20 random splits of train:dev:test data; 
 The learning curves on Cora looks like ![this](lcurvescora.pdf)
 
 ## Requirements
-- Python >=3.6.x
-- Tensorflow >= 1.13
 
-## Install dependencies
+- Python >= 3.6.x
+- 1.13 <= Tensorflow < 2
+
+Run
 ```
   pip install -r requirements.txt
 ```
@@ -44,9 +45,15 @@ git clone https://github.com/stellargraph/FisherGCN
 ## Run the code
 
 ```bash
-python train.py --model fishergcn
+python train.py --model [gcn|gcnT|fishergcn|fishergcnT] --randomsplit NSPLIT --repeat REPEAT
 ```
-Check [train.py](gcn/train.py) on the parameter configurations.
+where NSPLIT is the number of random train:dev:test splits to run (if 0 use the default split),
+and REPEAT is the number of random initialisations for each split.
+Check
+```bash
+python gcn/train.py --help
+```
+for more detailed parameter configurations.
 
 ## References
 

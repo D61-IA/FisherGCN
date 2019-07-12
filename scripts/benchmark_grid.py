@@ -14,7 +14,7 @@ FISHERGCN_PATH = Path(__file__).resolve().parents[1]
 sys.path.append( str(FISHERGCN_PATH.joinpath( "gcn/" )) )
 from data_io import PLANETOID_DATA, PITFALL_DATA
 
-MODELS   = [ 'gcn', 'fishergcn', 'gcnT', 'fishergcnT' ]
+MODELS   = [ 'gcn', 'fishergcn', 'gcnT', 'fishergcnT', 'gcnR' ]
 DATAS    = PLANETOID_DATA + PITFALL_DATA
 
 LRATE                = [ 0.001, 0.003, 0.01, 0.03 ]
@@ -23,6 +23,7 @@ WEIGHT_DECAY         = [ 0.002, 0.001, 0.0005 ]
 HIDDEN               = [ 32, 64 ]
 FISHER_NOISE         = [ 0.03, 0.1, 0.3, 1.0 ]
 FISHER_RANK          = [ 50 ]
+FLIP_PROB            = [ 1e-3 ]
 
 def _config_grid( data, model, default_config ):
 
@@ -32,9 +33,12 @@ def _config_grid( data, model, default_config ):
     _hidden       = HIDDEN       if default_config[3] is None else ( default_config[3], )
     _fisher_noise = FISHER_NOISE if default_config[4] is None else ( default_config[4], )
     _fisher_rank  = FISHER_RANK  if default_config[5] is None else ( default_config[5], )
+    _flip_prob    = FLIP_PROB    if default_config[6] is None else ( default_config[6], )
 
     if 'fisher' in model:
         _config_arr = itertools.product( _lrate, _dropout, _weight_decay, _hidden, _fisher_noise, _fisher_rank )
+    elif 'gcnR' in model:
+        _config_arr = itertools.product( _lrate, _dropout, _weight_decay, _hidden, _flip_prob )
     else:
         _config_arr = itertools.product( _lrate, _dropout, _weight_decay, _hidden )
     return list( _config_arr )
@@ -45,6 +49,8 @@ def run_single( ds, model, config, early, epochs, split, repeat, data_seed, init
 
     if 'fisher' in model:
         lr, dropout, reg, hidden, fisher_noise, fisher_rank = config
+    elif 'gcnR' in model:
+        lr, dropout, reg, hidden, flip_prob = config
     else:
         lr, dropout, reg, hidden = config
 
@@ -55,8 +61,12 @@ def run_single( ds, model, config, early, epochs, split, repeat, data_seed, init
           ' --randomsplit {} --repeat {} --data_seed {} --init_seed {}'.format(
           cmd_path, ds, model, lr, dropout, reg, hidden, early, epochs,
           split, repeat, data_seed, init_seed )
+
     if 'fisher' in model:
         cmd += ' --fisher_noise {} --fisher_rank {}'.format( fisher_noise, fisher_rank )
+    elif 'gcnR' in model:
+        cmd += ' --flip_prob {}'.format( flip_prob )
+
     if save: cmd += ' --save'
 
     try:
@@ -135,6 +145,7 @@ def main():
     parser.add_argument( '--hidden',       type=int,   default=None, help='hidden layer size' )
     parser.add_argument( '--fisher_noise', type=float, default=None, help='noise level' )
     parser.add_argument( '--fisher_rank',  type=int,   default=None, help='rank' )
+    parser.add_argument( '--flip_prob',    type=float, default=None, help='flip probability' )
     args = parser.parse_args()
 
     if args.dataset == 'all':
@@ -147,7 +158,7 @@ def main():
     else:
         model_arr = [ args.model ]
 
-    default_config = ( args.lrate, args.dropout, args.weight_decay, args.hidden, args.fisher_noise, args.fisher_rank )
+    default_config = ( args.lrate, args.dropout, args.weight_decay, args.hidden, args.fisher_noise, args.fisher_rank, args.flip_prob )
     for data, model in itertools.product( data_arr, model_arr ):
         run_repeated_exp( data, model, default_config, args.epochs, args.early_stop, args.randomsplit, args.repeat, args.data_seed, args.init_seed )
 

@@ -44,7 +44,7 @@ flags.DEFINE_integer( 'order', 5, 'order of high-order GCN' )
 flags.DEFINE_float(   'threshold', 1e-4, 'A threshold to apply nodes filtering on random walk matrix.' )
 
 # for gcnR
-flags.DEFINE_float(   'mask_prob', 0.0001, 'corruption rate of the adjacency matrix' )
+flags.DEFINE_float(   'flip_prob', 1e-3, 'randomly add/remove flip_prob neighbour per node' )
 
 # Fisher-GCN corresponds to fisher_freq=1 & fisher_adversary=1; other setting of these two parameters are varations
 # in practice, one only needs to tune the fisher_noise parameter
