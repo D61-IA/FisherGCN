@@ -2,7 +2,7 @@
 
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-This is a reference implementation of the paper [Fisher-Bures Adversary Graph Convolutional Networks](https://arxiv.org/abs/1903.04154)
+This is a reference implementation of the paper [Fisher-Bures Adversary Graph Convolutional Networks](https://arxiv.org/abs/1903.04154).
 
 ## Outline
 
@@ -10,7 +10,7 @@ Based on information theory, the intrinsic shape of isotropic noise corresponds 
 
 ## Performance
 
-The following table shows the average (20 random splits of train:dev:test data; 10 different random initialisations per split) testing loss/accuracy, based on a GCN model with one hidden layer, using a unified early stopping criterion. One can repeat these results based on this [script](hpc/submit_grid.sh) (one has to translate the script into actual commands without access to HPC resources). Notice that the scores have a large variation based on the how the train:dev:test datasets is selected (we use the same ratio with the Planetoid split [1]) and one has to be careful about this when comparing different GCN implementations. It is highly recommended to run the codes on a GPU.
+The following table shows the average (20 random splits of train:dev:test data; 10 different random initialisations per split) testing loss/accuracy, based on a GCN model with one hidden layer, using a unified early stopping criterion. One can repeat these results using this [script](hpc/submit_grid.sh) (assuming one has access to HPC resources managed by [slurm](https://slurm.schedmd.com/documentation.html); otherwise one has to translate the script into actual commands). Notice that the scores have a large variation based on the how the train:dev:test datasets are selected (we use the same ratio as the Planetoid split [1]) and one has to be careful about this when comparing different GCN implementations. It is highly recommended to run the codes on a GPU.
 
 | Model | Cora | Citeseer | Pubmed |
 | --- | --- | --- | --- |
@@ -60,11 +60,11 @@ for more detailed parameter configurations.
 
 The following works are highlighted on which our codes and datasets are based. See our [paper](https://arxiv.org/abs/1903.04154) for the complete list of references.
 
-[1] Z. Yang, W. W. Cohen, R. Salakhutdinov, [Revisiting Semi-Supervised Learning with Graph Embeddings](http://proceedings.mlr.press/v48/yanga16.html), ICML, 2016.
+[1] Zhilin Yang, William W. Cohen, Ruslan Salakhutdinov [Revisiting Semi-Supervised Learning with Graph Embeddings](http://proceedings.mlr.press/v48/yanga16.html), ICML, 2016.
 
-[2] T. Kipf, M. Welling, [Semi-Supervised Classification with Graph Convolutional Networks](https://arxiv.org/abs/1609.02907), ICLR, 2017.
+[2] Thomas N. Kipf, Max Welling [Semi-Supervised Classification with Graph Convolutional Networks](https://arxiv.org/abs/1609.02907), ICLR, 2017.
 
-[3] O. Shchur, M. Mumme, A. Bojchevski, S. Günnemann, [Pitfalls of Graph Neural Network Evaluation](https://arxiv.org/abs/1811.05868), Relational Representation Learning Workshop, NIPS 2018.
+[3] Oleksandr Shchur, Maximilian Mumme, Aleksandar Bojchevski, Stephan Günnemann [Pitfalls of Graph Neural Network Evaluation](https://arxiv.org/abs/1811.05868), Relational Representation Learning Workshop, NIPS 2018.
 
 ## Cite
 

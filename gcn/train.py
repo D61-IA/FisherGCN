@@ -277,13 +277,14 @@ def exp( dataset, data_seed, init_seed ):
         'test_acc':   test_acc,
     }
 
-def analyse( dataset, result, ofilename ):
-    avg_epochs = np.mean( [ len(r['train_loss']) for r in result ] )
-    min_epochs = min(     [ len(r['train_loss']) for r in result ] )
+def analyse( result, total_secs ):
 
-    def lcurve( key ):
-        return np.array( [ r[key][:min_epochs] for r in result ] )
+    # the learner's life measured by #epochs
+    life = np.array( [ len(r['train_loss']) for r in result ] )
+    print( 'finished in {:.2f} hours'.format( total_secs/3600 ) )
+    print( '{} {} final_life  {:.0f} epochs x {:.2f} secs/epoch'.format( FLAGS.model, FLAGS.dataset, life.mean(), total_secs/life.sum() ) )
 
+    # compute and print the final scores
     final_result = np.array( [ ( r['train_loss'][-1], r['train_acc'][-1],
                                r['valid_loss'][-1], r['valid_acc'][-1],
                                r['test_loss'], r['test_acc'] )
@@ -291,33 +292,44 @@ def analyse( dataset, result, ofilename ):
     _mean = np.mean( final_result, axis=0 )
     _std  = np.std( final_result, axis=0 )
 
-    if FLAGS.save: np.savez( ofilename,
-                             train_loss=lcurve('train_loss'),
-                             train_acc=lcurve('train_acc'),
-                             valid_loss=lcurve('valid_loss'),
-                             valid_acc=lcurve('valid_acc'),
-                             test_loss=final_result[:,4],
-                             test_acc=final_result[:,5],
-                             scores=_mean, std=_std )
-
     def _final_print( name, i, j ):
         print( '{} {} {} {:.2f} {:.2f} {:.2f} {:.2f}'.format(
-               FLAGS.model, dataset, name,
+               FLAGS.model, FLAGS.dataset, name,
                np.round( _mean[i], 2 ),
                np.round( _std[i], 2 ),
                np.round( _mean[j], 2 ),
                np.round( _std[j], 2 ) ) )
-
-    print( '{} {} final_life  {:.0f}'.format( FLAGS.model, dataset, avg_epochs ) )
     _final_print( 'final_train', 0, 1 )
     _final_print( 'final_valid', 2, 3 )
-    _final_print( 'final_test',  4, 5 )
+    _final_print( 'final_test ', 4, 5 )
+
+    # save the log file to disk
+    if FLAGS.save:
+        ofilename = "{}_{}_lr{}_drop{}_reg{}_hidden{}_early{}_seed{}_{}_repeat{}_{}".format(
+                    FLAGS.model, FLAGS.dataset, FLAGS.lrate, FLAGS.dropout,
+                    FLAGS.weight_decay, FLAGS.hidden, FLAGS.early_stop,
+                    FLAGS.init_seed, FLAGS.data_seed,
+                    FLAGS.randomsplit, FLAGS.repeat )
+
+        if 'fisher' in FLAGS.model:
+            ofilename += "_rank{}_perturb{}_noise{}_freq{}_adv{}".format(
+                          FLAGS.fisher_rank, FLAGS.fisher_perturbation,
+                          FLAGS.fisher_noise, FLAGS.fisher_freq, FLAGS.fisher_adversary )
+
+        def lcurve( key ):
+            return np.array( [ r[key][:life.min()] for r in result ] )
+
+        np.savez( ofilename,
+                  train_loss=lcurve('train_loss'),
+                  train_acc=lcurve('train_acc'),
+                  valid_loss=lcurve('valid_loss'),
+                  valid_acc=lcurve('valid_acc'),
+                  test_loss=final_result[:,4],
+                  test_acc=final_result[:,5],
+                  scores=_mean, std=_std )
 
 def main( argv ):
     FLAGS.hidden = [ int(h) for h in FLAGS.hidden ]
-
-    start_t = time.time()
-    result = []
 
     if FLAGS.randomsplit > 0:
         data_seeds = range( FLAGS.data_seed, FLAGS.data_seed+FLAGS.randomsplit )
@@ -325,23 +337,12 @@ def main( argv ):
         data_seeds = [ None ]
     init_seeds = range( FLAGS.init_seed, FLAGS.init_seed+FLAGS.repeat )
 
+    start_t = time.time()
+    result = []
     for _data_seed, _init_seed in itertools.product( data_seeds, init_seeds ):
         result.append( exp( FLAGS.dataset, _data_seed, _init_seed ) )
         gc.collect()
-
-    ofilename = "{}_{}_lr{}_drop{}_reg{}_hidden{}_early{}_seed{}_{}_repeat{}_{}".format(
-                FLAGS.model, FLAGS.dataset, FLAGS.lrate, FLAGS.dropout,
-                FLAGS.weight_decay, FLAGS.hidden, FLAGS.early_stop,
-                FLAGS.init_seed, FLAGS.data_seed,
-                FLAGS.randomsplit, FLAGS.repeat )
-
-    if 'fisher' in FLAGS.model:
-        ofilename += "_rank{}_perturb{}_noise{}_freq{}_adv{}".format(
-                      FLAGS.fisher_rank, FLAGS.fisher_perturbation,
-                      FLAGS.fisher_noise, FLAGS.fisher_freq, FLAGS.fisher_adversary )
-    analyse( FLAGS.dataset, result, ofilename )
-
-    print( 'finished in {:.2f} hours'.format( (time.time()-start_t)/3600 ) )
+    analyse( result, time.time()-start_t )
 
 if __name__ == '__main__':
     app.run( main )

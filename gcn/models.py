@@ -112,13 +112,13 @@ class MLP( Model ):
 
         for l, (din, dout) in enumerate( zip( dims, dims[1:] ) ):
             if l == 0:
-                self.layers.append( DropoutSparse( FLAGS.dropout ) )
+                if FLAGS.dropout > 0.001: self.layers.append( DropoutSparse( FLAGS.dropout ) )
                 self.layers.append( DenseSparse( dout,
                                                  input_dim=din,
                                                  use_bias=False,
                                                  activation=tf.nn.relu ) )
             else:
-                self.layers.append( Dropout( FLAGS.dropout ) )
+                if FLAGS.dropout > 0.001: self.layers.append( Dropout( FLAGS.dropout ) )
                 activation = None if l == len(dims)-2 else tf.nn.relu
                 self.layers.append( Dense( dout,
                                            input_dim=din,
