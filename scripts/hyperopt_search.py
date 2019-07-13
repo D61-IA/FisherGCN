@@ -40,7 +40,7 @@ def run_exp( dataset, config ):
     cmd_path = FISHERGCN_PATH.joinpath( "gcn/train.py" )
 
     cmd = 'python {} --dataset {} --model {} --lrate {} --dropout {}' \
-          ' --weight_decay {} --hidden1 {} --early_stop {} --epochs {}' \
+          ' --weight_decay {} --hidden {} --early_stop {} --epochs {}' \
           ' --randomsplit {} --repeat {} --seed {}'.format(
           cmd_path, dataset, config['model'],
           config['lrate'], config['dropout'],

@@ -10,7 +10,7 @@ Based on information theory, the intrinsic shape of isotropic noise corresponds 
 
 ## Performance
 
-The following table shows the average (20 random splits of train:dev:test data; 10 different random initialisations per split) testing loss/accuracy, based on a GCN model with one hidden layer, using a unified early stopping criterion. One can repeat these results based on [script](hpc/submit_grid.sh) (one has to translate the script into actual commands without access to HPC resources). Notice that the scores have a large variation based on the how the train:dev:test datasets is selected (we use the same ratio with the Planetoid split [1]) and one has to be careful about this when comparing different GCN implementations. It is highly recommended to run the codes on a GPU.
+The following table shows the average (20 random splits of train:dev:test data; 10 different random initialisations per split) testing loss/accuracy, based on a GCN model with one hidden layer, using a unified early stopping criterion. One can repeat these results based on this [script](hpc/submit_grid.sh) (one has to translate the script into actual commands without access to HPC resources). Notice that the scores have a large variation based on the how the train:dev:test datasets is selected (we use the same ratio with the Planetoid split [1]) and one has to be careful about this when comparing different GCN implementations. It is highly recommended to run the codes on a GPU.
 
 | Model | Cora | Citeseer | Pubmed |
 | --- | --- | --- | --- |
@@ -34,7 +34,7 @@ to install all dependencies.
 
 ## Datasets
 
-We use the same datasets as in [1][2][3]. They are stored in the folder [data](data/). Please [install](https://github.com/git-lfs/git-lfs/wiki/Installation) `git-lfs` before closing the repository with the following commands
+We use the same datasets as in [1][2][3]. They are stored in the folder [data](data/). Please [install](https://github.com/git-lfs/git-lfs/wiki/Installation) `git-lfs` before cloning the repository with the following commands
 
 ```bash
 # ...install git-lfs...
@@ -42,13 +42,14 @@ git lfs install
 git clone https://github.com/stellargraph/FisherGCN
 ```
 
+
 ## Run the code
 
 ```bash
-python train.py --model [gcn|gcnT|fishergcn|fishergcnT] --randomsplit NSPLIT --repeat REPEAT
+python gcn/train.py --dataset <cora|citeseer|pubmed> --model <gcn|gcnT|fishergcn|fishergcnT> [--randomsplit NSPLIT] [--repeat REPEAT]
 ```
-where NSPLIT is the number of random train:dev:test splits to run (if 0 use the default split),
-and REPEAT is the number of random initialisations for each split.
+where NSPLIT is the number of random train:dev:test splits to run (use 0 for the default split),
+and REPEAT is the number of random initialisations per split.
 Check
 ```bash
 python gcn/train.py --help
@@ -57,7 +58,7 @@ for more detailed parameter configurations.
 
 ## References
 
-The following works are highlighted here because our codes and datasets are largely based on them. See our [paper](https://arxiv.org/abs/1903.04154) for the complete list of references.
+The following works are highlighted on which our codes and datasets are based. See our [paper](https://arxiv.org/abs/1903.04154) for the complete list of references.
 
 [1] Z. Yang, W. W. Cohen, R. Salakhutdinov, [Revisiting Semi-Supervised Learning with Graph Embeddings](http://proceedings.mlr.press/v48/yanga16.html), ICML, 2016.
 

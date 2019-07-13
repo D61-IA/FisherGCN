@@ -29,7 +29,7 @@ flags.DEFINE_enum(  'model', 'fishergcn',
 flags.DEFINE_float(   'lrate', 0.01, 'initial learning rate.' )
 flags.DEFINE_float(   'dropout', 0.5, 'Dropout rate (1 - keep probability).' )
 flags.DEFINE_integer( 'epochs', 500, 'Number of epochs to train.' )
-flags.DEFINE_integer( 'hidden1', 64, 'Number of units in hidden layer 1.' )
+flags.DEFINE_list(    'hidden', ['64',], 'size of hidden layer(s)' )
 flags.DEFINE_float(   'weight_decay', 5e-4, 'Weight for L2 loss on embedding matrix.' )
 flags.DEFINE_integer( 'early_stop', 2, 'early_stop strategy' )        # 0: no stop 1: simple early stop 2: more strict conditions
 flags.DEFINE_boolean( 'save', False, 'save npz file which contains the learning results' )
@@ -314,34 +314,34 @@ def analyse( dataset, result, ofilename ):
     _final_print( 'final_test',  4, 5 )
 
 def main( argv ):
-    datasets = [ FLAGS.dataset ]
-    for _dataset in datasets:
-        start_t = time.time()
-        result = []
+    FLAGS.hidden = [ int(h) for h in FLAGS.hidden ]
 
-        if FLAGS.randomsplit > 0:
-            data_seeds = range( FLAGS.data_seed, FLAGS.data_seed+FLAGS.randomsplit )
-        else:
-            data_seeds = [ None ]
-        init_seeds = range( FLAGS.init_seed, FLAGS.init_seed+FLAGS.repeat )
+    start_t = time.time()
+    result = []
 
-        for _data_seed, _init_seed in itertools.product( data_seeds, init_seeds ):
-            result.append( exp( _dataset, _data_seed, _init_seed ) )
-            gc.collect()
+    if FLAGS.randomsplit > 0:
+        data_seeds = range( FLAGS.data_seed, FLAGS.data_seed+FLAGS.randomsplit )
+    else:
+        data_seeds = [ None ]
+    init_seeds = range( FLAGS.init_seed, FLAGS.init_seed+FLAGS.repeat )
 
-        ofilename = "{}_{}_lr{}_drop{}_reg{}_hidden{}_early{}_seed{}_{}_repeat{}_{}".format(
-                    FLAGS.model, _dataset, FLAGS.lrate, FLAGS.dropout,
-                    FLAGS.weight_decay, FLAGS.hidden1, FLAGS.early_stop,
-                    FLAGS.init_seed, FLAGS.data_seed,
-                    FLAGS.randomsplit, FLAGS.repeat )
+    for _data_seed, _init_seed in itertools.product( data_seeds, init_seeds ):
+        result.append( exp( FLAGS.dataset, _data_seed, _init_seed ) )
+        gc.collect()
 
-        if 'fisher' in FLAGS.model:
-            ofilename += "_rank{}_perturb{}_noise{}_freq{}_adv{}".format(
-                          FLAGS.fisher_rank, FLAGS.fisher_perturbation,
-                          FLAGS.fisher_noise, FLAGS.fisher_freq, FLAGS.fisher_adversary )
-        analyse( _dataset, result, ofilename )
+    ofilename = "{}_{}_lr{}_drop{}_reg{}_hidden{}_early{}_seed{}_{}_repeat{}_{}".format(
+                FLAGS.model, FLAGS.dataset, FLAGS.lrate, FLAGS.dropout,
+                FLAGS.weight_decay, FLAGS.hidden, FLAGS.early_stop,
+                FLAGS.init_seed, FLAGS.data_seed,
+                FLAGS.randomsplit, FLAGS.repeat )
 
-        print( 'finished in {:.2f} hours'.format( (time.time()-start_t)/3600 ) )
+    if 'fisher' in FLAGS.model:
+        ofilename += "_rank{}_perturb{}_noise{}_freq{}_adv{}".format(
+                      FLAGS.fisher_rank, FLAGS.fisher_perturbation,
+                      FLAGS.fisher_noise, FLAGS.fisher_freq, FLAGS.fisher_adversary )
+    analyse( FLAGS.dataset, result, ofilename )
+
+    print( 'finished in {:.2f} hours'.format( (time.time()-start_t)/3600 ) )
 
 if __name__ == '__main__':
     app.run( main )

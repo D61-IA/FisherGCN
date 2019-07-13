@@ -5,7 +5,7 @@ from metrics import *
 from absl import flags
 FLAGS = flags.FLAGS
 
-class Model(object):
+class Model( object ):
     def __init__(self, **kwargs):
         allowed_kwargs = { 'name', 'logging', 'input_rows', 'perturbation', 'subgraphs' }
         for kwarg in kwargs.keys():
@@ -108,18 +108,25 @@ class MLP( Model ):
                                         self.placeholders['labels_mask'])
 
     def _build( self ):
-        self.layers.append( DropoutSparse( FLAGS.dropout ) )
-        self.layers.append( DenseSparse( FLAGS.hidden1,
-                                         input_dim=self.input_dim,
-                                         use_bias=False,
-                                         activation=tf.nn.relu ) )
-        self.layers.append( Dropout( FLAGS.dropout ) )
-        self.layers.append( Dense( self.output_dim,
-                                   input_dim=FLAGS.hidden1,
-                                   use_bias=False, ) )
+        dims = [ self.input_dim, *FLAGS.hidden, self.output_dim ]
 
-    def predict(self):
-        return tf.nn.softmax(self.outputs)
+        for l, (din, dout) in enumerate( zip( dims, dims[1:] ) ):
+            if l == 0:
+                self.layers.append( DropoutSparse( FLAGS.dropout ) )
+                self.layers.append( DenseSparse( dout,
+                                                 input_dim=din,
+                                                 use_bias=False,
+                                                 activation=tf.nn.relu ) )
+            else:
+                self.layers.append( Dropout( FLAGS.dropout ) )
+                activation = None if l == len(dims)-2 else tf.nn.relu
+                self.layers.append( Dense( dout,
+                                           input_dim=din,
+                                           use_bias=False,
+                                           activation=activation ) )
+
+    def predict( self ):
+        return tf.nn.softmax( self.outputs )
 
 class GCN( Model ):
     def __init__( self, placeholders, perturbation=None, subgraphs=None, **kwargs ):
@@ -221,23 +228,30 @@ class GCN( Model ):
             self.accuracy = masked_accuracy( out, self.placeholders['labels'],
                                              self.placeholders['labels_mask'] )
 
-    def _build(self):
-        self.layers.append( GraphConvolution( input_rows=self.input_rows,
-                                   input_dim=self.input_dim,
-                                   output_dim=FLAGS.hidden1,
-                                   support=self.placeholders['support'],
-                                   activation=tf.nn.relu,
-                                   dropout=self.placeholders['dropout'],
-                                   sparse_inputs=True,
-                                   model=FLAGS.model,
-                                   perturbation=self.perturbation ) )
-        self.layers.append( GraphConvolution( input_rows=self.input_rows,
-                                   input_dim=FLAGS.hidden1,
-                                   output_dim=self.output_dim,
-                                   support=self.placeholders['support'],
-                                   dropout=self.placeholders['dropout'],
-                                   model=FLAGS.model,
-                                   perturbation=self.perturbation ) )
+    def _build( self ):
+        dims = [ self.input_dim, *FLAGS.hidden, self.output_dim ]
 
-    def predict(self):
+        for l, (din, dout) in enumerate( zip( dims, dims[1:] ) ):
+            if l == 0:
+                sparse_inputs = True
+            else:
+                sparse_inputs = False
+
+            if l == len(dims)-2:
+                activation = None
+            else:
+                activation = tf.nn.relu
+
+            self.layers.append(
+                GraphConvolution( input_rows=self.input_rows,
+                                  input_dim=din,
+                                  output_dim=dout,
+                                  support=self.placeholders['support'],
+                                  dropout=self.placeholders['dropout'],
+                                  sparse_inputs=sparse_inputs,
+                                  activation=activation,
+                                  model=FLAGS.model,
+                                  perturbation=self.perturbation ) )
+
+    def predict( self ):
         return tf.nn.softmax( self.outputs )

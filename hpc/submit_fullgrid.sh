@@ -45,7 +45,7 @@ for ds in "${DATASETS[@]}"; do
                             mkdir -p "outputs/"
                             sbatch -o outputs/log_${JOB}.txt -e outputs/log_${JOB}.txt --job-name=${JOB} --mem ${SBATCH_MEM} --time ${SBATCH_TIME} \
                               hpc/exec.sh --model ${MODEL} --dataset ${ds} --dropout ${dropout} --learning_rate ${lrate} --repeat ${REPEAT} \
-                                 --weight_decay ${reg} --early_stop ${early} --hidden1 ${hidden} \
+                                 --weight_decay ${reg} --early_stop ${early} --hidden ${hidden} \
                                  --fisher_noise ${noise} --fisher_rank ${rank} --fisher_freq ${freq} --fisher_adversary ${adv}
                             sleep 3
                         done
@@ -58,7 +58,7 @@ for ds in "${DATASETS[@]}"; do
                         mkdir -p "outputs/"
                         sbatch -o outputs/log_${JOB}.txt -e outputs/log_${JOB}.txt --job-name=${JOB} --mem ${SBATCH_MEM} --time ${SBATCH_TIME} \
                           hpc/exec.sh --model ${MODEL} --dataset ${ds} --dropout ${dropout} --learning_rate ${lrate} --repeat ${REPEAT} \
-                                      --weight_decay ${reg} --early_stop ${early} --hidden1 ${hidden}
+                                      --weight_decay ${reg} --early_stop ${early} --hidden ${hidden}
                         sleep 3
                     fi
 

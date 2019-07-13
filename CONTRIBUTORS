@@ -1,10 +1,10 @@
 This paper is authored by
 Ke Sun           (Data61)
-Piotr Koniusz    (Data61, ANU)
+Piotr Koniusz    (Data61+ANU)
 Zhen (Jeff) Wang (Data61)
 
 The codes are developed by
-Zhen Wang (baselines and scripts)
-Ke Sun    (random perturbation)
+Zhen (Jeff) Wang (baselines and scripts)
+Ke Sun           (random perturbation)
 
 The codes and datasets are based on previous works [1][2][3].

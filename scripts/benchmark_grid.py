@@ -57,7 +57,7 @@ def run_single( ds, model, config, early, epochs, split, repeat, data_seed, init
     cmd_path = FISHERGCN_PATH.joinpath( "gcn/train.py" )
 
     cmd = 'python {} --dataset {} --model {} --lrate {} --dropout {}' \
-          ' --weight_decay {} --hidden1 {} --early_stop {} --epochs {}' \
+          ' --weight_decay {} --hidden {} --early_stop {} --epochs {}' \
           ' --randomsplit {} --repeat {} --data_seed {} --init_seed {}'.format(
           cmd_path, ds, model, lr, dropout, reg, hidden, early, epochs,
           split, repeat, data_seed, init_seed )
