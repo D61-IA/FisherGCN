@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
 '''
-wrapper of train.py
+this is a wrapper of train.py which can do simple grid search of hyperparameters
+and report the top-1 accuracy in the hyperparameter grid.
 
-which can do grid search of hyperparameters
+If you already have a good hyperparameter configuration, use train.py instead
 '''
 
 import subprocess, shlex
@@ -20,7 +21,7 @@ DATAS    = PLANETOID_DATA + PITFALL_DATA
 LRATE                = [ 0.001, 0.003, 0.01, 0.03 ]
 DROPOUT              = [ 0.5, 0.8 ]
 WEIGHT_DECAY         = [ 0.002, 0.001, 0.0005 ]
-HIDDEN               = [ 32, 64 ]
+HIDDEN               = [ '32', '64' ]
 FISHER_NOISE         = [ 0.03, 0.1, 0.3, 1.0 ]
 FISHER_RANK          = [ 50 ]
 FLIP_PROB            = [ 1e-3 ]
@@ -83,7 +84,7 @@ def run_single( ds, model, config, early, epochs, split, repeat, data_seed, init
 
 def print_result( data, model, config, loss_and_acc, start_t ):
     print( '{:30s} {:15s}'.format( data, model ), end=" " )
-    print( 'lr={:<5.3g} drop={:<3.1g} reg={:<6.4g} hidden={:<3d}'.format( *config ), end=" " )
+    print( 'lr={:<5.3g} drop={:<3.1g} reg={:<6.4g} hidden={:<3s}'.format( *config ), end=" " )
     print( 'val {:6s} {:6s} test {:6s} {:6s} {:6s} {:6s}'.format( *loss_and_acc ), end=" " )
     print( '({:.2f}h)'.format( (time.time()-start_t)/3600 ) )
 
@@ -142,7 +143,7 @@ def main():
     parser.add_argument( '--lrate',        type=float, default=None, help='learning rate' )
     parser.add_argument( '--dropout',      type=float, default=None, help='dropout rate' )
     parser.add_argument( '--weight_decay', type=float, default=None, help='weight decay' )
-    parser.add_argument( '--hidden',       type=int,   default=None, help='hidden layer size' )
+    parser.add_argument( '--hidden',       type=str,   default=None, help='hidden layer size (single integer or comma separated list)' )
     parser.add_argument( '--fisher_noise', type=float, default=None, help='noise level' )
     parser.add_argument( '--fisher_rank',  type=int,   default=None, help='rank' )
     parser.add_argument( '--flip_prob',    type=float, default=None, help='flip probability' )

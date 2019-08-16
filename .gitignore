@@ -1,4 +1,3 @@
-__pycache__/
-*.py[cod]
-gcn/__pycache__/
+**/__pycache__/
 **/.DS_Store
+*.py[cod]

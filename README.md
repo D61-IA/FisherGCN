@@ -60,11 +60,11 @@ for more detailed parameter configurations.
 
 The following works are highlighted on which our codes and datasets are based. See our [paper](https://arxiv.org/abs/1903.04154) for the complete list of references.
 
-[1] Zhilin Yang, William W. Cohen, Ruslan Salakhutdinov [Revisiting Semi-Supervised Learning with Graph Embeddings](http://proceedings.mlr.press/v48/yanga16.html), ICML, 2016.
+[1] Zhilin Yang, William W. Cohen, Ruslan Salakhutdinov, [Revisiting Semi-Supervised Learning with Graph Embeddings](http://proceedings.mlr.press/v48/yanga16.html), ICML, 2016.
 
-[2] Thomas N. Kipf, Max Welling [Semi-Supervised Classification with Graph Convolutional Networks](https://arxiv.org/abs/1609.02907), ICLR, 2017.
+[2] Thomas N. Kipf, Max Welling, [Semi-Supervised Classification with Graph Convolutional Networks](https://arxiv.org/abs/1609.02907), ICLR, 2017.
 
-[3] Oleksandr Shchur, Maximilian Mumme, Aleksandar Bojchevski, Stephan Günnemann [Pitfalls of Graph Neural Network Evaluation](https://arxiv.org/abs/1811.05868), Relational Representation Learning Workshop, NIPS 2018.
+[3] Oleksandr Shchur, Maximilian Mumme, Aleksandar Bojchevski, Stephan Günnemann, [Pitfalls of Graph Neural Network Evaluation](https://arxiv.org/abs/1811.05868), Relational Representation Learning Workshop, NIPS 2018.
 
 ## Cite
 
@@ -76,7 +76,7 @@ If you apply FisherGCN in your work, please cite
   title     = {Fisher-Bures Adversary Graph Convolutional Networks},
   booktitle = {Uncertainty in Artificial Intelligence},
   year      = {2019},
-  pages     = {(to appear)},
+  pages     = {161},
   note      = {arXiv:1903.04154 [cs.LG]},
   url       = {https://arxiv.org/abs/1903.04154},
 }

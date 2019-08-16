@@ -646,15 +646,8 @@ def load_data( dataset_str, data_seed ):
         _nxgraph, adj, features, labels, idx_train, idx_val, idx_test = load_planetoid_dataset( dataset_str, data_seed )
 
     train_mask = sample_mask( idx_train, labels.shape[0] )
-    val_mask   = sample_mask( idx_val, labels.shape[0]   )
-    test_mask  = sample_mask( idx_test, labels.shape[0]  )
-
-    y_train = np.zeros(labels.shape)
-    y_val = np.zeros(labels.shape)
-    y_test = np.zeros(labels.shape)
-    y_train[train_mask, :] = labels[train_mask, :]
-    y_val[val_mask, :] = labels[val_mask, :]
-    y_test[test_mask, :] = labels[test_mask, :]
+    val_mask   = sample_mask( idx_val,   labels.shape[0] )
+    test_mask  = sample_mask( idx_test,  labels.shape[0] )
 
     # output some statistics
     print( '#nodes', adj.shape[0] )
@@ -694,7 +687,7 @@ def load_data( dataset_str, data_seed ):
     #plt.hist( subgraphs.sum(0) ); plt.show()
 
     print( 'dim(x)', features.shape[1] )
-    print( 'dim(y)', y_train.shape[1] )
+    print( 'dim(y)', labels.shape[1] )
     print( 'train:valid:test={}:{}:{}'.format( train_mask.sum(), val_mask.sum(), test_mask.sum() ) )
 
-    return adj, subgraphs, features, y_train, y_val, y_test, train_mask, val_mask, test_mask
+    return adj, subgraphs, features, labels, train_mask, val_mask, test_mask

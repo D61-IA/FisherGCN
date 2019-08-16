@@ -190,8 +190,14 @@ def exp( dataset, data_seed, init_seed ):
     print( 'running {} on {}'.format( FLAGS.model, dataset ) )
 
     tf.reset_default_graph()
-    adj, subgraphs, features, y_train, y_val, y_test, train_mask, val_mask, test_mask = load_data( dataset, data_seed )
+    adj, subgraphs, features, labels, train_mask, val_mask, test_mask = load_data( dataset, data_seed )
     features = preprocess_features( features )
+
+    # if early_stopping is not used, then put validation data into the testing data
+    if FLAGS.early_stop == 0:
+        mask = np.logical_or( val_mask, test_mask )
+        test_mask = mask
+        val_mask  = mask
 
     config = tf.ConfigProto()
     config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
@@ -209,17 +215,17 @@ def exp( dataset, data_seed, init_seed ):
 
         with tf.Session( config=config ) as sess:
 
-            model, support, placeholders = build_model( adj, features, y_train.shape[1], subgraphs )
+            model, support, placeholders = build_model( adj, features, labels.shape[1], subgraphs )
             sess.run( tf.global_variables_initializer() )
 
-            def evaluate( labels, labels_mask, noise=0., dropout=0. ):
+            def evaluate( labels_mask, noise=0., dropout=0. ):
                 feed_dict_val = construct_feed_dict( features, support, labels, labels_mask, placeholders, noise, dropout )
                 outs_val = sess.run( [model.loss, model.accuracy], feed_dict=feed_dict_val )
                 return outs_val[0], outs_val[1]
 
             start_t = time.time()
             for epoch in range( FLAGS.epochs ):
-                feed_dict = construct_feed_dict( features, support, y_train, train_mask, placeholders,
+                feed_dict = construct_feed_dict( features, support, labels, train_mask, placeholders,
                                                  FLAGS.fisher_noise, FLAGS.dropout )
                 feed_dict.update( {tf.keras.backend.learning_phase(): 1} )
                 outs = sess.run( [model.opt_op, model.loss, model.accuracy], feed_dict=feed_dict )
@@ -227,7 +233,7 @@ def exp( dataset, data_seed, init_seed ):
                 train_acc.append( outs[2] )
 
                 # Validation
-                outs = evaluate( y_val, val_mask )
+                outs = evaluate( val_mask )
                 valid_loss.append( outs[0] )
                 valid_acc.append( outs[1] )
 
@@ -260,7 +266,7 @@ def exp( dataset, data_seed, init_seed ):
                     print( 'unknown early stopping strategy:', FLAGS.early_stop )
                     sys.exit(0)
 
-            test_loss, test_acc = evaluate( y_test, test_mask )
+            test_loss, test_acc = evaluate( test_mask )
             sec_per_epoch = ( time.time() - start_t ) / epoch
             print( "Test set results:", "loss=", "{:.5f}".format(test_loss),
                    "accuracy=", "{:.5f}".format(test_acc),
