@@ -11,7 +11,7 @@ matplotlib.rcParams['text.usetex']  = True
 import matplotlib.pyplot as plt
 
 '''
-npz file -> pdf plot of learning curves
+npz files -> pdf plot of learning curves
 '''
 
 MODEL_NAMES = {
@@ -46,6 +46,10 @@ def extract_lcurve( results, key ):
     return lcurves
 
 def main():
+    # usage: python genfig.py path [keys...]
+    #
+    # path is the folder containing the npz files
+    # keys is a list of keywords which should appear in the npz filename
     if len( sys.argv ) > 1:
         root = sys.argv[1]
     else:
@@ -91,7 +95,7 @@ def main():
         for model in [ 'gcn', 'fishergcn', 'gcnT', 'fishergcnT' ]:
             if not (data,model) in result: continue
             print_result( data, model, result[data,model] )
-            lcurves.append( ( model, extract_lcurve( result[data,model], 'train_acc' ),
+            lcurves.append( ( model, extract_lcurve( result[data,model], 'train_loss' ),
                                      extract_lcurve( result[data,model], 'valid_acc' ) ) )
 
         if len(lcurves) == 0: continue
@@ -99,7 +103,8 @@ def main():
         colors     = [ 'r', 'tab:blue', 'darkorange', 'purple' ]
         markers    = [ 'o', 'v', 's', '*' ]
 
-        fig, ax = plt.subplots( 1,1,figsize=(8,6) )
+        fig, ax1 = plt.subplots( 1,1,figsize=(8,6) )
+        ax2 = ax1.twinx()
         step = 0
         for (model, tlc, vlc), c, mk in zip( lcurves, colors, markers ):
             tlc_mean = np.mean( tlc, axis=0 )
@@ -109,24 +114,26 @@ def main():
             x = np.arange( tlc_mean.shape[0] ) + step
             step += 0.8
 
-            ax.errorbar( x, tlc_mean, tlc_std,
-                         color=c, ls='-', lw=2, marker=mk, label='Train {}'.format( MODEL_NAMES[model] ),
-                         markevery=5, errorevery=5, capsize=1, alpha=0.5, elinewidth=1 )
+            ax1.errorbar( x, tlc_mean, tlc_std,
+                          color=c, ls='-', lw=2, marker=mk, label='{}'.format( MODEL_NAMES[model] ),
+                          markevery=5, errorevery=5, capsize=1, alpha=0.5, elinewidth=1 )
 
-            ax.errorbar( x, vlc_mean, vlc_std,
-                         color=c, ls='--', lw=2, marker=mk, label='Valid {}'.format( MODEL_NAMES[model] ),
-                         markevery=5, errorevery=5, capsize=1, alpha=0.5, elinewidth=1 )
+            ax2.errorbar( x, vlc_mean, vlc_std,
+                          color=c, ls='--', lw=2, marker=mk, label='{}'.format( MODEL_NAMES[model] ),
+                          markevery=5, errorevery=5, capsize=1, alpha=0.5, elinewidth=1 )
 
-        ax.set_xlim( 0, 50 )
-        ax.set_ylim( 35, 95 )
+        ax1.set_xlim( 0, 100 )
+        ax1.set_ylim( 0.3, 1.0 )
+        ax2.set_ylim( 55, 80 )
 
-        ax.set_xlabel( 'Epoch' )
-        ax.set_ylabel( 'Accuracy' )
-        ax.set_title( DATA_NAMES[data] if data in DATA_NAMES else data.replace('_','') )
-        ax.grid()
-        ax.legend()
+        ax1.set_xlabel( 'Epoch' )
+        ax1.set_ylabel( 'Training Loss' )
+        ax2.set_ylabel( 'Testing Accuracy' )
+        ax1.set_title( DATA_NAMES[data] if data in DATA_NAMES else data.replace('_','') )
+        ax1.grid()
+        ax1.legend( loc=5 )
 
-        figname = data + '.pdf'
+        figname = data + '.svg'
         fig.savefig( figname, bbox_inches='tight', transparent=True, pad_inches=0 )
 
 if __name__ == '__main__':

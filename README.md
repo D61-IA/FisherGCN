@@ -10,16 +10,19 @@ Based on information theory, the intrinsic shape of isotropic noise corresponds 
 
 ## Performance
 
-The following table shows the average (20 random splits of train:dev:test data; 10 different random initialisations per split) testing loss/accuracy, based on a GCN model with one hidden layer, using a unified early stopping criterion. One can repeat these results using this [script](hpc/submit_grid.sh) (assuming one has access to HPC resources managed by [slurm](https://slurm.schedmd.com/documentation.html); otherwise one has to translate the script into actual commands). Notice that the scores have a large variation based on the how the train:dev:test datasets are selected (we use the same ratio as the Planetoid split [1]) and one has to be careful about this when comparing different GCN implementations. It is highly recommended to run the codes on a GPU.
+The following table shows the average (20 random splits of train:dev:test data; 10 different random initialisations per split) testing loss/accuracy, based on a GCN model with one or two hidden layers, using a unified early stopping criterion. One can repeat these results using this [script](hpc/submit_grid.sh) (assuming one has access to HPC resources managed by [slurm](https://slurm.schedmd.com/documentation.html); otherwise one has to translate the script into actual commands). Notice that the scores have a large variation based on the how the train:dev:test datasets are selected (we use the same ratio as the Planetoid split [1]) and one has to be careful about this when comparing different GCN implementations.
 
-| Model | Cora | Citeseer | Pubmed |
-| --- | --- | --- | --- |
-| GCN |        1.07/80.52 | 1.36/69.59 | 0.75/78.17 |
-| FisherGCN |  1.06/80.70 | 1.35/69.80 | 0.74/78.43 |
-| GCNT |       1.04/81.20 | 1.33/70.31 | 0.70/78.99 |
-| FisherGCNT | 1.03/81.46 | 1.32/70.48 | 0.69/79.34 |
+| Model | Cora (2-layer) | CiteSeer (2-layer) | Pubmed (2-layer) | Cora (3-layer) | CiteSeer (3-layer) | Pubmed (3-layer)|
+| --- | --- | --- | --- | --- | --- | --- |
+| GCN |        1.07/80.52 | 1.36/69.59 | 0.75/78.17 | 0.93/79.16 | 1.31/67.68 | 0.89/76.65 |
+| FisherGCN |  1.06/80.70 | 1.35/69.80 | 0.74/78.43 | 0.89/79.80 | 1.26/68.32 | 0.85/77.00 |
+| GCNT |       1.04/81.20 | 1.33/70.31 | 0.70/78.99 | 0.87/80.40 | 1.29/68.28 | 0.79/78.11 |
+| FisherGCNT | 1.03/81.46 | 1.32/70.48 | 0.69/79.34 | 0.84/80.85 | 1.24/68.67 | 0.76/78.50 |
 
-The learning curves on Cora looks like ![this](lcurvescora.pdf)
+The learning curves look like
+![cora](data/lcurves/cora.svg)
+![citeseer](data/lcurves/citeseer.svg)
+![pubmed](data/lcurves/pubmed.svg)
 
 ## Requirements
 

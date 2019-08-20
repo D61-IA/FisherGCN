@@ -9,7 +9,12 @@ EXEC="hpc/exec_grid.sh"
 # these configurations are selected based on testing accuracy on cora+citeseer
 # see hyperopt_search.py for details
 GCN_CONFIG="--lrate 0.01 --dropout 0.5 --weight_decay 0.0005 --hidden 64"
+
+# add the following line for plotting the learning curves (extended validation data)
+# GCN_CONFIG="${GCN_CONFIG} --epochs 100 --early_stop 0"
+
 FISHER_CONFIG="$GCN_CONFIG --fisher_noise 0.1 --fisher_rank 10"
+
 
 REPEAT_ARGS="--randomsplit 20 --repeat 10 --data_seed 2019"
 
